@@ -13,3 +13,9 @@ Naive Bayes Model
 
 ##Dataset
 Import from nltk.corpus
+
+##TodoList
+- [X] Import the Dataset
+- [ ] Implement with single word as the Feature
+- [ ] Implement with bigrams as the Feature
+- [ ] Considering the tags of the word for the sentence
