@@ -39,9 +39,11 @@ class PolaritySents:
             else:
                 continue
 
-def Classifier1:
+# Implementing the naive bayes model with only single word
+def Classifier_SingleWord:
     def __init__(self):
         
+
 
 
 
