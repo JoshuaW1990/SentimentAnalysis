@@ -1,10 +1,12 @@
+
+import nltk
+import nltk.corpus
+from random import shuffle
+from collections import defaultdict
+
 """
 Import Dataset
 """
-import nltk
-import nltk.corpus
-
-
 class PolaritySents:
     def __init__(self):
         self.posSents = []
@@ -38,12 +40,60 @@ class PolaritySents:
                 self.negSents.append(string[1])
             else:
                 continue
+        return
 
-# Implementing the naive bayes model with only single word
-def Classifier_SingleWord:
+    def get_pos_sentence(self):
+        return list(self.posSents)
+
+    def size_pos_sentence(self):
+        return len(self.posSents)
+
+    def get_neg_sentence(self):
+        return list(self.negSents)
+
+    def size_neg_sentence(self):
+        return len(self.negSents)
+
+
+
+"""
+Divide the dataset
+We need to make sure that the number of positive sentences is equal to that of the negative sentences.
+"""
+class ClassificationData:
     def __init__(self):
-        
+        training_input = []
+        training_output = []
+        test_input = []
+        test_output = []
 
+    def extract_sentence(self, polarity_sents):
+        pos_size = polarity_sents.size_pos_sentence()
+        neg_size = polarity_sents.size_neg_sentence()
+        if pos_size > neg_size:
+            pos_sentence = polarity_sents.get_pos_sentence()
+            shuffle(pos_sentence)
+            pos_sentence = pos_sentence[:neg_size]
+            neg_sentence = polarity_sents.get_pos_sentence()
+            shuffle(neg_sentence)
+        else:
+            pos_sentence = polarity_sents.get_pos_sentence()
+            shuffle(pos_sentence)
+            neg_sentence = polarity_sents.get_pos_sentence()
+            shuffle(neg_sentence)
+            neg_sentence = neg_sentence[:pos_size]
+        return (pos_sentence, neg_sentence)
+
+    # Divide the dataset into training set and test set by cross validation method
+    def divide_dataset(self, fold_index, fold_num, polarity_sents):
+        (pos_sentence, neg_sentence) = self.divide_dataset(polarity_sents)
+        if fold_index > fold_num:
+            print "error when dividing the dataset in cross validation"
+            return None
+        size = len(pos_sentence)
+        fold_size = int(size / fold_num)
+        return
+        
 
 
 
