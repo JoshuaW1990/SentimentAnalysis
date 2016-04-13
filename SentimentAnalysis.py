@@ -15,42 +15,29 @@ class PolaritySents:
 
     #example: dataset = nltk.corpus.product_reviews_2.raw()
     def preprocess_dataset(self, dataset):
-        count = 1
-        sents = dataset.sents()
-        features = dataset.features()
-        raw_txt = dataset.raw().split('\n')
-        preprocessed_sents = []
-        print len(raw_txt)
-        print len(features)
-        print len(sents)
+        dataset = nltk.corpus.product_reviews_2
+        reviews = dataset.reviews()
+        features = []
+        sents = []
         # Preprocess the sentence to remove the sentence with no labels
-        index = 0
-        for i in range(len(raw_txt)):
-            sentence = raw_txt[i]
-            if sentence.startswith('[t]') or sentence.startswith('*'):
-                continue
-            if sentence.startswith('##'):
-                continue
-            try:
-                preprocessed_sents.append(sents[index])
-                index += 1
-            except:
-                print i, index, len(raw_txt)
+        for review in reviews:
+            lines = review.review_lines
+            for line in lines:
+                if len(line.features) == 0:
+                    continue
+                features.append(line.features)
+                sents.append(line.sent)
         # Divide the preprocessed_sents into two lists according to the label
         for i in range(len(features)):
             feature = features[i]
             sent_sentiment = 0
-            for item in features[i]:
-                if item == '[u]' or item == '[p]' or item == '[s]' or item == '[cs]' or item == '[cc]':
-                    continue
-                if not item.startswith('['):
-                    continue
-                num = int(item[1:-1])
+            for item in feature:
+                num = int(item[1])
                 sent_sentiment += num
             if sent_sentiment > 0:
-                self.posSents.append(preprocessed_sents[i])
+                self.posSents.append(sents[i])
             elif sent_sentiment < 0:
-                self.negSents.append(preprocessed_sents[i])
+                self.negSents.append(sents[i])
             else:
                 continue
         return
@@ -178,5 +165,5 @@ class Bernoulli_NaiveBayesModel:
 polarityData = PolaritySents()
 dataset = nltk.corpus.product_reviews_2
 polarityData.preprocess_dataset(dataset)
-#dataset = nltk.corpus.product_reviews_1
-#polarityData.preprocess_dataset(dataset)
+dataset = nltk.corpus.product_reviews_1
+polarityData.preprocess_dataset(dataset)
