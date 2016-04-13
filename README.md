@@ -20,6 +20,9 @@ Import from nltk.corpus
 
 ##TodoList
 - [X] Import the Dataset
+- [X] Multinomial naive bayes model
+- [ ] Bernoulli naive bayes model
+- [ ] Eliminate the feature with less information
 - [ ] Implement with single word as the Feature
 - [ ] Implement with bigrams as the Feature
 - [ ] Considering the tags of the word for the sentence

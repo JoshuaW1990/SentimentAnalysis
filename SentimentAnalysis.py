@@ -128,12 +128,12 @@ Training the dataset
 """
 # Multinomial naive bayes model
 class Multinomial_NaiveBayesModel:
+    prior = defaultdict(float)
+    cond_prob = defaultdict(float)
     vocabulary = set()
-    total_count = 0.0
-    label_count = defaultdict(float)
-    word_count = defaultdict(float)
-    word_count = defaultdict(float)
-    log_prob_likelihood = defaultdict(float)
+    total_word_count = 0.0
+    label_word_count = defaultdict(float) # key: label, value:  number of words
+    tuple_word_count = defaultdict(float) # key: (label, word), value: number of words
 
     def __init__(self, dataset = None):
         if dataset != None:
@@ -146,47 +146,50 @@ class Multinomial_NaiveBayesModel:
             sentence = training_input[i]
             for word in sentence:
                 self.vocabulary.add(word)
-                self.total_count += 1.0
-                self.label_count[label] += 1.0
+                self.total_word_count += 1.0
+                self.label_word_count[label] += 1.0
                 item = (label, word)
-                self.word_count[item] += 1.0
+                self.tuple_word_count[item] += 1.0
         # Calculate the logaritmic value of probability
         label_set = set(training_output)
         for label in label_set:
+            self.prior[label] = log(self.label_word_count[label] / self.total_word_count)
             for word in self.vocabulary:
                 item = (label, word)
-                self.log_prob_likelihood[item] = log((self.word_count[item] + 1.0) / (self.label_count[label] + float(len(self.vocabulary))))
+                self.cond_prob[item] = log((self.tuple_word_count[item] + 1.0) / (self.label_word_count[label] + float(len(self.vocabulary))))
         self.check_disribution()
         return
 
     def check_disribution(self):
-        # Check the label
-        assert(self.total_count == (self.label_count[1] + self.label_count[0])), "distribution of labels are incorrect"
-        # Check the word
-        label_set = set(self.label_count.keys())
+        # Check the total
+        assert(self.total_word_count == (self.label_word_count[1] + self.label_word_count[0])), "distribution of total is incorrect"
+        # Check each label
+        label_set = set(self.label_word_count.keys())
         for label in label_set:
             num = 0.0
             for word in self.vocabulary:
                 item = (label, word)
-                num += self.word_count[item]
-            assert(num == self.label_count[label]), "distribution of word is not correct"
+                num += self.tuple_word_count[item]
+            assert(num == self.label_word_count[label]), "distribution of single label is not correct"
 
     def classify(self, input):
         pred_output = []
-        label_set = set(self.label_count.keys())
-        max_prob = 0.0
+        label_set = set(self.label_word_count.keys())
         for sentence in input:
-            for label in label_set:
-                pred_label = label
-                pred_prob = log(self.label_count[label] / self.total_count)
+            max_prob = 0.0
+            pred_label = 0
+            for label in range(2):
+                pred_prob = self.prior[label]
                 for word in sentence:
                     item = (label, word)
-                    if item not in self.log_prob_likelihood:
+                    if item not in self.cond_prob:
                         continue
-                    tmp_prob = self.log_prob_likelihood[item]
+                    tmp_prob = self.cond_prob[item]
                     pred_prob += tmp_prob
-                print pred_prob
+                pred_prob = exp(pred_prob)
+                print label, pred_prob, max_prob
                 if pred_prob > max_prob:
+                    print "reset the label"
                     max_prob = pred_prob
                     pred_label = label
             pred_output.append(pred_label)
@@ -207,14 +210,63 @@ class Multinomial_NaiveBayesModel:
 """
 # Bernoulli Naive bayes model
 class Bernoulli_NaiveBayesModel:
-    def __init__(self):
+    vocabulary = set()  # set of words in the training set
+    total_sent_count = 0.0  # number of sentences in all training set
+    label_sent_count = defaultdict(float) # number of sentences with a same label: key = label
+    label_word_count = defaultdict(float) # number of words with a same label: key = label
+    tuple_sent_count = defaultdict(float) # number of sentences containing a same word with a same label: key = (label, word)
+    log_prob_likelihood = defaultdict(float) # key = (label, word)
 
-
+    def __init__(self, dataset = None):
+        if dataset != None:
+            self.train(dataset.training_input, dataset.training_output)
 
     def train(self, training_input, training_output):
+        for i in range(len(training_input)):
+            sentence = training_input[i]
+            label = training_output[i]
+            self.label_sent_count[label] += 1.0
+            self.total_sent_count += 1.0
+            sentence_set = set()
+            for word in sentence:
+                self.label_word_count[label] += 1.0
+                self.vocabulary.add(word)
+                item = (label, word)
+                if item in sentence_set:
+                    continue
+                sentence_set.add(item)
+                self.tuple_sent_count[item] += 1.0
+        for item in self.tuple_sent_count.keys():
+            label = item[0]
+            self.log_prob_likelihood[item] = log((self.tuple_sent_count[item] + 1.0) / (self.label_word_count[label] + 2.0))
+        self.check_disribution()
+        return
+
+    def check_disribution(self):
+        # Check the label
+        assert(self.total_sent_count == (self.label_sent_count[1] + self.label_sent_count[0])), "distribution of labels are incorrect"
 
 
     def classify(self, input):
+        pred_output = []
+        label_set = set(self.label_sent_count.keys())
+        max_prob = 0.0
+        for sentence in input:
+            for label in label_set:
+                pred_label = label
+                pred_prob = log(self.label_sent_count[label] / self.total_sent_count)
+                sentence_set = set()
+                for word in sentence:
+                    item = (label, word)
+                    if item not in self.log_prob_likelihood:
+                        continue
+                    tmp_prob = self.log_prob_likelihood[item]
+                    pred_prob += tmp_prob
+                if pred_prob > max_prob:
+                    max_prob = pred_prob
+                    pred_label = label
+            pred_output.append(pred_label)
+
 
 
     def test(self, test_input, test_output):
@@ -229,5 +281,11 @@ Preprocessed_dataset = ClassificationData()
 Preprocessed_dataset.divide_dataset(0, 10, polarityData)
 
 multinomial_naive_bayes_model = Multinomial_NaiveBayesModel(Preprocessed_dataset)
-accuracy = multinomial_naive_bayes_model.test(Preprocessed_dataset.get_test_input(), Preprocessed_dataset.get_test_output())
-print accuracy
+multinomial_accuracy = multinomial_naive_bayes_model.test(Preprocessed_dataset.get_test_input(), Preprocessed_dataset.get_test_output())
+print multinomial_accuracy
+
+"""
+bernoulli_naive_bayes_model = Bernoulli_NaiveBayesModel(Preprocessed_dataset)
+bernoulli_accuracy = bernoulli_naive_bayes_model.test(Preprocessed_dataset.get_test_input(), Preprocessed_dataset.get_test_output())
+print bernoulli_accuracy
+"""
