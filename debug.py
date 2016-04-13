@@ -1,7 +1,7 @@
 import nltk
 import nltk.corpus
 
-dataset = nltk.corpus.product_reviews_1
+dataset = nltk.corpus.product_reviews_2
 reviews = dataset.reviews()
 features = []
 sents = []
