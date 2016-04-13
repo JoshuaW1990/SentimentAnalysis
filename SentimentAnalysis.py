@@ -131,8 +131,8 @@ class Multinomial_NaiveBayesModel:
     vocabulary = set()
     total_count = 0.0
     label_count = defaultdict(float)
-    pos_word_count = defaultdict(float)
-    neg_word_count = defaultdict(float)
+    word_count = defaultdict(float)
+    word_count = defaultdict(float)
     log_prob_likelihood = defaultdict(float)
 
     def __init__(self, dataset = None):
@@ -148,17 +148,14 @@ class Multinomial_NaiveBayesModel:
                 self.vocabulary.add(word)
                 self.total_count += 1.0
                 self.label_count[label] += 1.0
-                if label == 1:
-                    self.pos_word_count[word] += 1.0
-                else:
-                    self.neg_word_count[word] += 1.0
+                item = (label, word)
+                self.word_count[item] += 1.0
         # Calculate the logaritmic value of probability
         label_set = set(training_output)
         for label in label_set:
             for word in self.vocabulary:
                 item = (label, word)
-                if label == 1:
-                    self.log_prob_likelihood[item] = log((self.pos_word_count[word] + 1.0) / (self.label_count[label] + float(len(self.vocabulary))))
+                self.log_prob_likelihood[item] = log((self.word_count[item] + 1.0) / (self.label_count[label] + float(len(self.vocabulary))))
         self.check_disribution()
         return
 
@@ -170,15 +167,42 @@ class Multinomial_NaiveBayesModel:
         for label in label_set:
             num = 0.0
             for word in self.vocabulary:
-                if label == 1:
-                    num += self.pos_word_count[word]
-                else:
-                    num += self.neg_word_count[word]
+                item = (label, word)
+                num += self.word_count[item]
             assert(num == self.label_count[label]), "distribution of word is not correct"
 
     def classify(self, input):
+        pred_output = []
+        label_set = set(self.label_count.keys())
+        max_prob = 0.0
+        for sentence in input:
+            for label in label_set:
+                pred_label = label
+                pred_prob = log(self.label_count[label] / self.total_count)
+                for word in sentence:
+                    item = (label, word)
+                    if item not in self.log_prob_likelihood:
+                        continue
+                    tmp_prob = self.log_prob_likelihood[item]
+                    pred_prob += tmp_prob
+                print pred_prob
+                if pred_prob > max_prob:
+                    max_prob = pred_prob
+                    pred_label = label
+            pred_output.append(pred_label)
+        return pred_output
 
     def test(self, test_input, test_output):
+        pred_output = self.classify(test_input)
+        total = float(len(test_output))
+        correct = 0.0
+        for i in range(len(test_output)):
+            if test_output[i] == pred_output[i]:
+                correct += 1.0
+        print correct
+        print total
+        accuracy = correct / total
+        return accuracy
 
 """
 # Bernoulli Naive bayes model
@@ -205,3 +229,5 @@ Preprocessed_dataset = ClassificationData()
 Preprocessed_dataset.divide_dataset(0, 10, polarityData)
 
 multinomial_naive_bayes_model = Multinomial_NaiveBayesModel(Preprocessed_dataset)
+accuracy = multinomial_naive_bayes_model.test(Preprocessed_dataset.get_test_input(), Preprocessed_dataset.get_test_output())
+print accuracy
