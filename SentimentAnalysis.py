@@ -119,7 +119,6 @@ class Multinomial_NaiveBayesModel:
     total_word_count = 0.0
     label_word_count = defaultdict(float) # count(c) key: label, value:  number of words
     tuple_word_count = defaultdict(float) # count(c, word) key: (label, word), value: number of words
-    theta = 0.01
 
     def __init__(self, dataset = None):
         if dataset != None:
@@ -195,15 +194,17 @@ class Multinomial_NaiveBayesModel:
 # Bernoulli Naive bayes model
 class Bernoulli_NaiveBayesModel:
     vocabulary = set()  # set of words in the training set
-    total_sent_count = 0.0  # number of sentences in all training set
-    label_sent_count = defaultdict(float) # number of sentences with a same label: key = label
-    label_word_count = defaultdict(float) # number of words with a same label: key = label
-    tuple_sent_count = defaultdict(float) # number of sentences containing a same word with a same label: key = (label, word)
-    log_prob_likelihood = defaultdict(float) # key = (label, word)
+    total_sent_count = 0.0  # count(sents)
+    label_sent_count = defaultdict(float) # count(label) of sentences: count(label)
+    tuple_sent_count = defaultdict(float) # count(label, word) of sentences: count(label, word)
+    prior = defaultdict(float) # prior probability: p(c) = count(label) / count(sents)
+    cond_prob = defaultdict(float) # conditional probability: p(word|c) = (count(label, word) + 1) / (count(label) + 2)
 
     def __init__(self, dataset = None):
         if dataset != None:
+            self.vocabulary = dataset.word_features
             self.train(dataset.training_input, dataset.training_output)
+
 
     def train(self, training_input, training_output):
         for i in range(len(training_input)):
@@ -213,16 +214,20 @@ class Bernoulli_NaiveBayesModel:
             self.total_sent_count += 1.0
             sentence_set = set()
             for word in sentence:
-                self.label_word_count[label] += 1.0
-                self.vocabulary.add(word)
+                if word not in self.vocabulary:
+                    continue
                 item = (label, word)
                 if item in sentence_set:
                     continue
                 sentence_set.add(item)
                 self.tuple_sent_count[item] += 1.0
-        for item in self.tuple_sent_count.keys():
-            label = item[0]
-            self.log_prob_likelihood[item] = log((self.tuple_sent_count[item] + 1.0) / (self.label_word_count[label] + 2.0))
+        # Calculate the logaritmic value of probability
+        label_set = set(training_output)
+        for label in label_set:
+            self.prior[label] = log(self.label_sent_count[label] / self.total_sent_count)
+            for word in self.vocabulary:
+                item = (label, word)
+                self.cond_prob[item] = log((self.tuple_sent_count[item] + 1.0) / (self.label_sent_count[label] + 2.0))
         self.check_disribution()
         return
 
@@ -230,31 +235,40 @@ class Bernoulli_NaiveBayesModel:
         # Check the label
         assert(self.total_sent_count == (self.label_sent_count[1] + self.label_sent_count[0])), "distribution of labels are incorrect"
 
-
     def classify(self, input):
         pred_output = []
-        label_set = set(self.label_sent_count.keys())
-        max_prob = 0.0
         for sentence in input:
-            for label in label_set:
-                pred_label = label
-                pred_prob = log(self.label_sent_count[label] / self.total_sent_count)
+            max_prob = 0.0
+            pred_label = 0
+            for label in range(2):
                 sentence_set = set()
+                pred_prob = self.prior[label]
                 for word in sentence:
                     item = (label, word)
-                    if item not in self.log_prob_likelihood:
+                    if item not in self.cond_prob:
                         continue
-                    tmp_prob = self.log_prob_likelihood[item]
+                    tmp_prob = self.cond_prob[item]
                     pred_prob += tmp_prob
+                pred_prob = exp(pred_prob)
                 if pred_prob > max_prob:
                     max_prob = pred_prob
                     pred_label = label
             pred_output.append(pred_label)
+        return pred_output
 
 
 
     def test(self, test_input, test_output):
-
+        pred_output = self.classify(test_input)
+        total = float(len(test_output))
+        correct = 0.0
+        for i in range(len(test_output)):
+            if test_output[i] == pred_output[i]:
+                correct += 1.0
+        print correct
+        print total
+        accuracy = correct / total
+        return accuracy
 
 
 
@@ -269,4 +283,8 @@ Preprocessed_dataset.find_best_features(polarityData)
 
 multinomial_naive_bayes_model = Multinomial_NaiveBayesModel(Preprocessed_dataset)
 multinomial_accuracy = multinomial_naive_bayes_model.test(Preprocessed_dataset.test_input, Preprocessed_dataset.test_output)
-print multinomial_accuracy
+print "accuracy of multinomial_accuracy: ", multinomial_accuracy
+
+bernoulli_naive_bayes_model = Bernoulli_NaiveBayesModel(Preprocessed_dataset)
+bernoulli_accuracy = bernoulli_naive_bayes_model.test(Preprocessed_dataset.test_input, Preprocessed_dataset.test_output)
+print "accuracy of bernoulli_naive_bayes_model: ", bernoulli_accuracy
