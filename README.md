@@ -22,7 +22,8 @@ Import from nltk.corpus
 - [X] Import the Dataset
 - [X] Multinomial naive bayes model
 - [ ] Bernoulli naive bayes model
-- [ ] Eliminate the feature with less information
+- [ ] Write the code for calculating the information gain
+- [ ] Use the information gain to eliminate the unecessary features
 - [ ] Implement with single word as the Feature
 - [ ] Implement with bigrams as the Feature
 - [ ] Considering the tags of the word for the sentence
