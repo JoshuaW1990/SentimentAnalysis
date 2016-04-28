@@ -270,6 +270,14 @@ class Bernoulli_NaiveBayesModel:
         accuracy = correct / total
         return accuracy
 
+"""Use the informtion gain to filter features
+"""
+# Calculate entropy
+
+# Calculate the information gain
+
+
+
 
 
 polarityData = PolaritySents()
