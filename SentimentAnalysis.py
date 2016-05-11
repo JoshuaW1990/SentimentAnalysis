@@ -1,5 +1,6 @@
 import nltk
 import nltk.corpus
+import numpy as np
 from random import shuffle
 from collections import defaultdict
 from math import log, exp
@@ -186,8 +187,6 @@ class Multinomial_NaiveBayesModel:
         for i in range(len(test_output)):
             if test_output[i] == pred_output[i]:
                 correct += 1.0
-        print correct
-        print total
         accuracy = correct / total
         return accuracy
 
@@ -265,16 +264,79 @@ class Bernoulli_NaiveBayesModel:
         for i in range(len(test_output)):
             if test_output[i] == pred_output[i]:
                 correct += 1.0
-        print correct
-        print total
         accuracy = correct / total
         return accuracy
+
+
+
+
 
 """Use the informtion gain to filter features
 """
 # Calculate entropy
+def CalculateEntropy(output_set):
+    count = defaultdict(float)
+    for label in output_set:
+        count[label] += 1.0
+    entropy = 0.0
+    total = sum(count.values())
+    for proportion in count.values():
+        fraction = float(proportion) / float(total)
+        print fraction, proportion
+        entropy = entropy - fraction * np.log2(fraction)
+    return entropy
 
 # Calculate the information gain
+def CalculateInfoGain(input_set, output_set):
+    # The total entropy
+    total_entropy = CalculateEntropy(output_set)
+    # Divide the labels according to the value of the attribute in the input_set
+    positive_output = []
+    negative_output = []
+    for i in range(len(input_set)):
+        if input_set[i] == 1.0:
+            positive_output.append(output_set[i])
+        else:
+            negative_output.append(output_set[i])
+    # Calculate the reduction of the entropy, which is the information gain
+    reduced_entropy = (float(len(positive_output)) / float(len(output_set))) * CalculateEntropy(positive_output)
+    reduced_entropy += (float(len(negative_output)) / float(len(output_set))) * CalculateEntropy(negative_output)
+    reduction_entropy = total_entropy - reduced_entropy
+    return  reduction_entropy
+
+
+
+
+
+
+
+"""Use the max_ent model
+"""
+
+
+# Main function for all the algorithm: run cross validation
+def cross_validation(fold_index, fold_num):
+    polarityData = PolaritySents()
+    dataset = nltk.corpus.product_reviews_2
+    polarityData.preprocess_dataset(dataset)
+    dataset = nltk.corpus.product_reviews_1
+    polarityData.preprocess_dataset(dataset)
+    Preprocessed_dataset = Preprocess_Data()
+    Preprocessed_dataset.divide_dataset(fold_index, fold_num, polarityData)
+    Preprocessed_dataset.find_best_features(polarityData)
+
+    multinomial_naive_bayes_model = Multinomial_NaiveBayesModel(Preprocessed_dataset)
+    multinomial_accuracy = multinomial_naive_bayes_model.test(Preprocessed_dataset.test_input, Preprocessed_dataset.test_output)
+    print "accuracy of multinomial_accuracy: ", multinomial_accuracy
+
+    bernoulli_naive_bayes_model = Bernoulli_NaiveBayesModel(Preprocessed_dataset)
+    bernoulli_accuracy = bernoulli_naive_bayes_model.test(Preprocessed_dataset.test_input, Preprocessed_dataset.test_output)
+    print "accuracy of bernoulli_naive_bayes_model: ", bernoulli_accuracy
+
+#cross_validation(0, 10)
+
+
+
 
 
 
