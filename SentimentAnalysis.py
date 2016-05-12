@@ -4,7 +4,7 @@ from nltk.classify import MaxentClassifier
 import numpy as np
 from random import shuffle
 from collections import defaultdict
-from math import log, exp
+from math import log, exp, sqrt
 
 
 
@@ -91,8 +91,8 @@ class Preprocess_Data:
         start_index = fold_size * fold_index
         training_input = pos_sentence[:start_index] + pos_sentence[end_index:] + neg_sentence[:start_index] + neg_sentence[end_index:]
         test_input = pos_sentence[start_index:end_index] + neg_sentence[start_index:end_index]
-        training_output = [1] * (size - (end_index - start_index)) + [0] * (size - (end_index - start_index))
-        test_output = [1] * (end_index - start_index) + [0] * (end_index - start_index)
+        training_output = [1] * (size - (end_index - start_index)) + [-1] * (size - (end_index - start_index))
+        test_output = [1] * (end_index - start_index) + [-1] * (end_index - start_index)
         return (training_input, training_output, test_input, test_output)
 
     # Convert the form of the dataset
@@ -119,6 +119,97 @@ class Preprocess_Data:
             for word in sentence.keys():
                 if word not in self.word_features:
                     del sentence[word]
+
+
+
+"""baseline algorithm
+"""
+# build the dictionary of the positive words and negative words
+path = "opinion-lexicon-English/"
+pos_filename = "positive-words.txt"
+neg_filename = "negative-words.txt"
+
+filename = path + pos_filename
+with open(filename, 'r') as f:
+    lines = f.readlines()
+
+pos_lexicons = set()
+for line in lines:
+    if line.startswith(";"):
+        continue
+    word = line.strip()
+    pos_lexicons.add(word)
+
+filename = path + neg_filename
+with open(filename, 'r') as f:
+    lines = f.readlines()
+
+neg_lexicons = set()
+for line in lines:
+    if line.startswith(";"):
+        continue
+    word = line.strip()
+    neg_lexicons.add(word)
+
+# use the lexical ratio to determine whether it is negative or postive
+def baseline_algorithm(pos_lexicons, neg_lexicons, test_input):
+    pred_labels = []
+    for i in range(len(test_input)):
+        sentence = test_input[i].keys()
+        pos_count = 0
+        neg_count = 0
+        for word in sentence:
+            if word in pos_lexicons:
+                pos_count += 1
+            elif word in neg_lexicons:
+                neg_count += 1
+            else:
+                continue
+        if pos_count > neg_count:
+            pred_labels.append(1)
+        elif pos_count < neg_count:
+            pred_labels.append(-1)
+        else:
+            pred_labels.append(0)
+    return pred_labels
+
+def calculate_confusionMatrix(pred_labels, labels):
+    confusionMatrix = defaultdict(float)
+    for i in range(len(labels)):
+        if labels[i] == 1:
+            if pred_labels[i] == 1:
+                confusionMatrix['TP'] += 1.0
+            elif pred_labels[i] == -1:
+                confusionMatrix['FN'] += 1.0
+            else:
+                continue
+        else:
+            if pred_labels[i] == 1:
+                confusionMatrix['FP'] += 1.0
+            elif pred_labels[i] == -1:
+                confusionMatrix['TN'] += 1.0
+            else:
+                continue
+    return confusionMatrix
+
+def evaluation(confusionMatrix):
+    total = sum(confusionMatrix.values())
+    TP = confusionMatrix['TP']
+    TN = confusionMatrix['TN']
+    FP = confusionMatrix['FP']
+    FN = confusionMatrix['FN']
+    accuracy = (TP + TN) / float(total)
+    cc = TP * TN - FP * FN
+    tmp = sqrt((TP + FN) * (TP + FP) * (TN + FP) * (TN + FN))
+    cc = float(cc) / float(tmp)
+    return (accuracy, cc)
+
+
+
+
+
+
+
 
 
 """
@@ -162,7 +253,7 @@ class Multinomial_NaiveBayesModel:
 
     def check_disribution(self):
         # Check the total
-        assert(self.total_word_count == (self.label_word_count[1] + self.label_word_count[0])), "distribution of total is incorrect"
+        assert(self.total_word_count == (self.label_word_count[1] + self.label_word_count[-1])), "distribution of total is incorrect"
         # Check each label
         label_set = set(self.label_word_count.keys())
         for label in label_set:
@@ -176,8 +267,8 @@ class Multinomial_NaiveBayesModel:
         pred_output = []
         for sentence in input:
             max_prob = 0.0
-            pred_label = 0
-            for label in range(2):
+            pred_label = -1
+            for label in [-1, 1]:
                 pred_prob = self.prior[label]
                 for word in sentence.keys():
                     item = (label, word)
@@ -192,15 +283,7 @@ class Multinomial_NaiveBayesModel:
             pred_output.append(pred_label)
         return pred_output
 
-    def test(self, test_input, test_output):
-        pred_output = self.classify(test_input)
-        total = float(len(test_output))
-        correct = 0.0
-        for i in range(len(test_output)):
-            if test_output[i] == pred_output[i]:
-                correct += 1.0
-        accuracy = correct / total
-        return accuracy
+
 
 # Bernoulli Naive bayes model
 class Bernoulli_NaiveBayesModel:
@@ -249,14 +332,14 @@ class Bernoulli_NaiveBayesModel:
 
     def check_disribution(self):
         # Check the label
-        assert(self.total_sent_count == (self.label_sent_count[1] + self.label_sent_count[0])), "distribution of labels are incorrect"
+        assert(self.total_sent_count == (self.label_sent_count[1] + self.label_sent_count[-1])), "distribution of labels are incorrect"
 
     def classify(self, input):
         pred_output = []
         for sentence in input:
             max_prob = 0.0
-            pred_label = 0
-            for label in range(2):
+            pred_label = -1
+            for label in [-1, 1]:
                 sentence_set = set()
                 pred_prob = self.prior[label]
                 for word in sentence.keys():
@@ -273,16 +356,6 @@ class Bernoulli_NaiveBayesModel:
         return pred_output
 
 
-
-    def test(self, test_input, test_output):
-        pred_output = self.classify(test_input)
-        total = float(len(test_output))
-        correct = 0.0
-        for i in range(len(test_output)):
-            if test_output[i] == pred_output[i]:
-                correct += 1.0
-        accuracy = correct / total
-        return accuracy
 
 
 
@@ -357,28 +430,29 @@ def filter_words(dataset, num):
 
 """Use the max_ent model
 """
-def calculate_accuracy_maxent(dataset):
-    training_input = dataset.X_train
-    training_output = dataset.Y_train
+def classify_maxent(X_train, Y_train, X_test):
+    training_input = X_train
+    training_output = Y_train
     training_data = []
     for i in range(len(training_input)):
         training_data.append((training_input[i], training_output[i]))
     clf = MaxentClassifier.train(training_data)
-    pred_labels = clf.classify_many(dataset.X_test)
-    total = float(len(dataset.Y_test))
-    count = 0.0
-    for i in range(len(pred_labels)):
-        if pred_labels[i] == dataset.Y_test[i]:
-            count += 1.0
-    accuracy = float(count) / total
-    clf.show_most_informative_features(10)
-    return accuracy
+    pred_labels = clf.classify_many(X_test)
+    return pred_labels
+
 
 
 
 
 
 # Main function for all the algorithm: run cross validation
+def calculate_accuracy(pred_labels, labels):
+    confusionMatrix = calculate_confusionMatrix(pred_labels, labels)
+    (accuracy, cc) = evaluation(confusionMatrix)
+    return accuracy
+
+
+
 def calculate_test_accuracy(dataset):
     multinomial_naive_bayes_model = Multinomial_NaiveBayesModel()
     multinomial_naive_bayes_model.train(dataset)
@@ -431,15 +505,26 @@ Preprocessed_dataset = Preprocess_Data()
 Preprocessed_dataset.transform_dataset(0, 10, polarityData)
 Preprocessed_dataset.filter_dataset(4000)
 
+"""baseline accuracy
+"""
+Y_pred = baseline_algorithm(pos_lexicons, neg_lexicons, Preprocessed_dataset.X_test)
+accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
+print "accuracy of baseline algorithm is: ", accuracy
+
+
+
 multinomial_naive_bayes_model = Multinomial_NaiveBayesModel()
 multinomial_naive_bayes_model.train(Preprocessed_dataset)
-multinomial_accuracy = multinomial_naive_bayes_model.test(Preprocessed_dataset.X_test, Preprocessed_dataset.Y_test)
+Y_pred = multinomial_naive_bayes_model.classify(Preprocessed_dataset.X_test)
+multinomial_accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
 print "accuracy of multinomial_accuracy: ", multinomial_accuracy
 
 bernoulli_naive_bayes_model = Bernoulli_NaiveBayesModel()
 bernoulli_naive_bayes_model.train(Preprocessed_dataset)
-bernoulli_accuracy = bernoulli_naive_bayes_model.test(Preprocessed_dataset.X_test, Preprocessed_dataset.Y_test)
+Y_pred = bernoulli_naive_bayes_model.classify(Preprocessed_dataset.X_test)
+bernoulli_accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
 print "accuracy of bernoulli_naive_bayes_model: ", bernoulli_accuracy
 
-maxent_accuracy = calculate_accuracy_maxent(Preprocessed_dataset)
+Y_pred = classify_maxent(Preprocessed_dataset.X_train, Preprocessed_dataset.Y_train, Preprocessed_dataset.X_test)
+maxent_accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
 print "accuracy of maxent model: ", maxent_accuracy
