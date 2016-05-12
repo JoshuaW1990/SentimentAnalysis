@@ -340,6 +340,7 @@ def filter_words(dataset, num):
     result_list = [feature for (info_gain, feature) in sorted(zip(info_gain_list, feature_list))]
     result_list.reverse()
     #reversed(result_list)
+    print result_list[:10]
     return result_list[:num]
 
 
@@ -370,6 +371,7 @@ def calculate_accuracy_maxent(dataset):
         if pred_labels[i] == dataset.Y_test[i]:
             count += 1.0
     accuracy = float(count) / total
+    clf.show_most_informative_features(10)
     return accuracy
 
 
@@ -427,7 +429,7 @@ dataset = nltk.corpus.product_reviews_1
 polarityData.preprocess_dataset(dataset)
 Preprocessed_dataset = Preprocess_Data()
 Preprocessed_dataset.transform_dataset(0, 10, polarityData)
-Preprocessed_dataset.filter_dataset(2000)
+Preprocessed_dataset.filter_dataset(4000)
 
 multinomial_naive_bayes_model = Multinomial_NaiveBayesModel()
 multinomial_naive_bayes_model.train(Preprocessed_dataset)
@@ -439,7 +441,5 @@ bernoulli_naive_bayes_model.train(Preprocessed_dataset)
 bernoulli_accuracy = bernoulli_naive_bayes_model.test(Preprocessed_dataset.X_test, Preprocessed_dataset.Y_test)
 print "accuracy of bernoulli_naive_bayes_model: ", bernoulli_accuracy
 
-"""
 maxent_accuracy = calculate_accuracy_maxent(Preprocessed_dataset)
-print "accuracy of max ent model: ", maxent_accuracy
-"""
+print "accuracy of maxent model: ", maxent_accuracy
