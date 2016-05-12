@@ -53,7 +53,7 @@ Find the best feature from the vocabulary of the dataset
 label for positive sentence: 1
 label for negative sentence: 0
 """
-class Preprocess_Data:
+class Preprocess_Data_unigram:
     def __init__(self):
         self.X_train =[]
         self.Y_train = []
@@ -68,9 +68,9 @@ class Preprocess_Data:
         min_size = min(pos_size, neg_size)
         # shuffle the dataset
         pos_sentence = polarity_sents.posSents
-        shuffle(pos_sentence)
+        #shuffle(pos_sentence)
         neg_sentence = polarity_sents.negSents
-        shuffle(neg_sentence)
+        #shuffle(neg_sentence)
 
         pos_sentence = pos_sentence[:min_size]
         neg_sentence = neg_sentence[:min_size]
@@ -120,6 +120,85 @@ class Preprocess_Data:
                 if word not in self.word_features:
                     del sentence[word]
 
+class Preprocess_Data_bigram:
+    def __init__(self):
+        self.X_train =[]
+        self.Y_train = []
+        self.X_test = []
+        self.Y_test = []
+        self.word_features = set()
+
+    def extract_sentence(self, polarity_sents):
+        # Get the minimum value of the size
+        pos_size = len(polarity_sents.posSents)
+        neg_size = len(polarity_sents.negSents)
+        min_size = min(pos_size, neg_size)
+        # shuffle the dataset
+        pos_sentence = polarity_sents.posSents
+        #shuffle(pos_sentence)
+        neg_sentence = polarity_sents.negSents
+        #shuffle(neg_sentence)
+
+        pos_sentence = pos_sentence[:min_size]
+        neg_sentence = neg_sentence[:min_size]
+        return (pos_sentence, neg_sentence)
+
+    # Divide the dataset into training set and test set by cross validation method
+    # Divide the dataset into training set and test set by cross validation method
+    def divide_dataset(self, fold_index, fold_num, pos_sentence, neg_sentence):
+        if fold_index >= fold_num:
+            print "error when dividing the dataset in cross validation"
+            return None
+        size = len(pos_sentence)
+        fold_size = int(size / fold_num)
+        if fold_index == fold_size - 1:
+            end_index = size
+        else:
+            end_index = fold_size * (fold_index + 1)
+        start_index = fold_size * fold_index
+        training_input = pos_sentence[:start_index] + pos_sentence[end_index:] + neg_sentence[:start_index] + neg_sentence[end_index:]
+        test_input = pos_sentence[start_index:end_index] + neg_sentence[start_index:end_index]
+        training_output = [1] * (size - (end_index - start_index)) + [-1] * (size - (end_index - start_index))
+        test_output = [1] * (end_index - start_index) + [-1] * (end_index - start_index)
+        return (training_input, training_output, test_input, test_output)
+
+    # Convert the form of the dataset
+    def transform_dataset(self, fold_index, fold_num, polarity_sents):
+        (pos_sentence, neg_sentence) = self.extract_sentence(polarity_sents)
+        (training_input, training_output, test_input, test_output) = self.divide_dataset(fold_index, fold_num, pos_sentence, neg_sentence)
+        self.Y_train = training_output
+        self.Y_test = test_output
+        for sentence in training_input:
+            instance = {}
+            for i in range(len(sentence)):
+                word = sentence[i]
+                self.word_features.add(word)
+                instance[word] = 1
+                if i == 0:
+                    continue
+                bigram = (sentence[i - 1], word)
+                self.word_features.add(bigram)
+                instance[bigram] = 1
+            self.X_train.append(instance)
+        for sentence in test_input:
+            instance = {}
+            for i in range(len(sentence)):
+                word = sentence[i]
+                instance[word] = 1
+                if i == 0:
+                    continue
+                bigram = (sentence[i - 1], word)
+                instance[bigram] = 1
+            self.X_test.append(instance)
+
+    # filtering the words in the dataset
+    def filter_dataset(self, num):
+        word_list = filter_words(self, num)
+        self.word_features = set(word_list)
+        for sentence in self.X_train:
+            for word in sentence.keys():
+                if word not in self.word_features:
+                    del sentence[word]
 
 
 """baseline algorithm
@@ -501,9 +580,9 @@ dataset = nltk.corpus.product_reviews_2
 polarityData.preprocess_dataset(dataset)
 dataset = nltk.corpus.product_reviews_1
 polarityData.preprocess_dataset(dataset)
-Preprocessed_dataset = Preprocess_Data()
+Preprocessed_dataset = Preprocess_Data_bigram()
 Preprocessed_dataset.transform_dataset(0, 10, polarityData)
-Preprocessed_dataset.filter_dataset(4000)
+#Preprocessed_dataset.filter_dataset(4000)
 
 """baseline accuracy
 """
