@@ -1,9 +1,12 @@
 import nltk
 import nltk.corpus
+from nltk.classify import MaxentClassifier
 import numpy as np
 from random import shuffle
 from collections import defaultdict
 from math import log, exp
+
+
 
 """
 Import Dataset
@@ -52,10 +55,10 @@ label for negative sentence: 0
 """
 class Preprocess_Data:
     def __init__(self):
-        self.training_input =[]
-        self.training_output = []
-        self.test_input = []
-        self.test_output = []
+        self.X_train =[]
+        self.Y_train = []
+        self.X_test = []
+        self.Y_test = []
         self.word_features = set()
 
     def extract_sentence(self, polarity_sents):
@@ -75,38 +78,47 @@ class Preprocess_Data:
 
     # Divide the dataset into training set and test set by cross validation method
     # Divide the dataset into training set and test set by cross validation method
-    def divide_dataset(self, fold_index, fold_num, polarity_sents):
-        (pos_sentence, neg_sentence) = self.extract_sentence(polarity_sents)
+    def divide_dataset(self, fold_index, fold_num, pos_sentence, neg_sentence):
         if fold_index >= fold_num:
             print "error when dividing the dataset in cross validation"
             return None
         size = len(pos_sentence)
         fold_size = int(size / fold_num)
-        start_index = 0
-        end_index = 0
         if fold_index == fold_size - 1:
             end_index = size
         else:
             end_index = fold_size * (fold_index + 1)
         start_index = fold_size * fold_index
-        self.training_input = pos_sentence[:start_index] + pos_sentence[end_index:] + neg_sentence[:start_index] + neg_sentence[end_index:]
-        self.test_input = pos_sentence[start_index:end_index] + neg_sentence[start_index:end_index]
-        self.training_output = [1] * (size - (end_index - start_index)) + [0] * (size - (end_index - start_index))
-        self.test_output = [1] * (end_index - start_index) + [0] * (end_index - start_index)
-        return None
+        training_input = pos_sentence[:start_index] + pos_sentence[end_index:] + neg_sentence[:start_index] + neg_sentence[end_index:]
+        test_input = pos_sentence[start_index:end_index] + neg_sentence[start_index:end_index]
+        training_output = [1] * (size - (end_index - start_index)) + [0] * (size - (end_index - start_index))
+        test_output = [1] * (end_index - start_index) + [0] * (end_index - start_index)
+        return (training_input, training_output, test_input, test_output)
 
-    def find_best_features(self, original_dataset, num_features = None):
-        if num_features == None:
-            for sentence in original_dataset.posSents:
-                for word in sentence:
-                    self.word_features.add(word)
-            for sentence in original_dataset.negSents:
-                for word in sentence:
-                    self.word_features.add(word)
-        return None
+    # Convert the form of the dataset
+    def transform_dataset(self, fold_index, fold_num, polarity_sents):
+        (pos_sentence, neg_sentence) = self.extract_sentence(polarity_sents)
+        (training_input, training_output, test_input, test_output) = self.divide_dataset(fold_index, fold_num, pos_sentence, neg_sentence)
+        self.Y_train = training_output
+        self.Y_test = test_output
+        for sentence in training_input:
+            instance = {}
+            for word in sentence:
+                self.word_features.add(word)
+                instance[word] = 1
+            self.X_train.append(instance)
+        for sentence in test_input:
+            instance = dict.fromkeys(sentence, 1)
+            self.X_test.append(instance)
 
-
-
+    # filtering the words in the dataset
+    def filter_dataset(self, num):
+        word_list = filter_words(self, num)
+        self.word_features = set(word_list)
+        for sentence in self.X_train:
+            for word in sentence.keys():
+                if word not in self.word_features:
+                    del sentence[word]
 
 
 """
@@ -114,23 +126,23 @@ Training the dataset
 """
 # Multinomial naive bayes model
 class Multinomial_NaiveBayesModel:
-    prior = defaultdict(float) #prior probaility p(c) = count(c) / total_count
-    cond_prob = defaultdict(float) # conditional probability: p(word|c) = (count(c, word) + 1) / (count(c) + |v|)
-    vocabulary = set()
-    total_word_count = 0.0
-    label_word_count = defaultdict(float) # count(c) key: label, value:  number of words
-    tuple_word_count = defaultdict(float) # count(c, word) key: (label, word), value: number of words
 
-    def __init__(self, dataset = None):
-        if dataset != None:
-            self.vocabulary = dataset.word_features
-            self.train(dataset.training_input, dataset.training_output)
+    def __init__(self):
+        self.prior = defaultdict(float) #prior probaility p(c) = count(c) / total_count
+        self.cond_prob = defaultdict(float) # conditional probability: p(word|c) = (count(c, word) + 1) / (count(c) + |v|)
+        self.vocabulary = set()
+        self.total_word_count = 0.0
+        self.label_word_count = defaultdict(float) # count(c) key: label, value:  number of words
+        self.tuple_word_count = defaultdict(float) # count(c, word) key: (label, word), value: number of words
 
-    def train(self, training_input, training_output):
+    def train(self, dataset):
+        self.vocabulary = dataset.word_features
+        training_input = dataset.X_train
+        training_output = dataset.Y_train
         # Count the frequency of the label and word
         for i in range(len(training_input)):
             label = training_output[i]
-            sentence = training_input[i]
+            sentence = training_input[i].keys()
             for word in sentence:
                 if word not in self.vocabulary:
                     continue
@@ -167,7 +179,7 @@ class Multinomial_NaiveBayesModel:
             pred_label = 0
             for label in range(2):
                 pred_prob = self.prior[label]
-                for word in sentence:
+                for word in sentence.keys():
                     item = (label, word)
                     if item not in self.cond_prob:
                         continue
@@ -199,15 +211,20 @@ class Bernoulli_NaiveBayesModel:
     prior = defaultdict(float) # prior probability: p(c) = count(label) / count(sents)
     cond_prob = defaultdict(float) # conditional probability: p(word|c) = (count(label, word) + 1) / (count(label) + 2)
 
-    def __init__(self, dataset = None):
-        if dataset != None:
-            self.vocabulary = dataset.word_features
-            self.train(dataset.training_input, dataset.training_output)
+    def __init__(self):
+        self.vocabulary = set()  # set of words in the training set
+        self.total_sent_count = 0.0  # count(sents)
+        self.label_sent_count = defaultdict(float) # count(label) of sentences: count(label)
+        self.tuple_sent_count = defaultdict(float) # count(label, word) of sentences: count(label, word)
+        self.prior = defaultdict(float) # prior probability: p(c) = count(label) / count(sents)
+        self.cond_prob = defaultdict(float) # conditional probability: p(word|c) = (count(label, word) + 1) / (count(label) + 2)
 
-
-    def train(self, training_input, training_output):
+    def train(self, dataset):
+        self.vocabulary = dataset.word_features
+        training_input = dataset.X_train
+        training_output = dataset.Y_train
         for i in range(len(training_input)):
-            sentence = training_input[i]
+            sentence = training_input[i].keys()
             label = training_output[i]
             self.label_sent_count[label] += 1.0
             self.total_sent_count += 1.0
@@ -242,7 +259,7 @@ class Bernoulli_NaiveBayesModel:
             for label in range(2):
                 sentence_set = set()
                 pred_prob = self.prior[label]
-                for word in sentence:
+                for word in sentence.keys():
                     item = (label, word)
                     if item not in self.cond_prob:
                         continue
@@ -282,7 +299,6 @@ def CalculateEntropy(output_set):
     total = sum(count.values())
     for proportion in count.values():
         fraction = float(proportion) / float(total)
-        print fraction, proportion
         entropy = entropy - fraction * np.log2(fraction)
     return entropy
 
@@ -294,7 +310,7 @@ def CalculateInfoGain(input_set, output_set):
     positive_output = []
     negative_output = []
     for i in range(len(input_set)):
-        if input_set[i] == 1.0:
+        if input_set[i] == 1:
             positive_output.append(output_set[i])
         else:
             negative_output.append(output_set[i])
@@ -305,6 +321,34 @@ def CalculateInfoGain(input_set, output_set):
     return  reduction_entropy
 
 
+# main function for filtering the features
+def filter_words(dataset, num):
+    feature_list = list(dataset.word_features)
+    training_input = dataset.X_train
+    training_output = dataset.Y_train
+    info_gain_list = []
+    for feature in feature_list:
+        input_set = []
+        output_set = list(training_output)
+        for sentence in training_input:
+            if feature not in sentence:
+                input_set.append(0)
+            else:
+                input_set.append(1)
+        info_gain = CalculateInfoGain(input_set, output_set)
+        info_gain_list.append(info_gain)
+    result_list = [feature for (info_gain, feature) in sorted(zip(info_gain_list, feature_list))]
+    result_list.reverse()
+    #reversed(result_list)
+    return result_list[:num]
+
+
+
+
+
+
+
+
 
 
 
@@ -312,29 +356,63 @@ def CalculateInfoGain(input_set, output_set):
 
 """Use the max_ent model
 """
+def calculate_accuracy_maxent(dataset):
+    training_input = dataset.X_train
+    training_output = dataset.Y_train
+    training_data = []
+    for i in range(len(training_input)):
+        training_data.append((training_input[i], training_output[i]))
+    clf = MaxentClassifier.train(training_data)
+    pred_labels = clf.classify_many(dataset.X_test)
+    total = float(len(dataset.Y_test))
+    count = 0.0
+    for i in range(len(pred_labels)):
+        if pred_labels[i] == dataset.Y_test[i]:
+            count += 1.0
+    accuracy = float(count) / total
+    return accuracy
+
+
+
 
 
 # Main function for all the algorithm: run cross validation
-def cross_validation(fold_index, fold_num):
+def calculate_test_accuracy(dataset):
+    multinomial_naive_bayes_model = Multinomial_NaiveBayesModel()
+    multinomial_naive_bayes_model.train(dataset)
+    multinomial_accuracy = multinomial_naive_bayes_model.test(dataset.X_test, dataset.Y_test)
+
+    bernoulli_naive_bayes_model = Bernoulli_NaiveBayesModel()
+    bernoulli_naive_bayes_model.train(dataset)
+    bernoulli_accuracy = bernoulli_naive_bayes_model.test(dataset.X_test, dataset.Y_test)
+
+    return (multinomial_accuracy, bernoulli_accuracy)
+
+
+def cross_validation(fold_num):
     polarityData = PolaritySents()
     dataset = nltk.corpus.product_reviews_2
     polarityData.preprocess_dataset(dataset)
     dataset = nltk.corpus.product_reviews_1
     polarityData.preprocess_dataset(dataset)
-    Preprocessed_dataset = Preprocess_Data()
-    Preprocessed_dataset.divide_dataset(fold_index, fold_num, polarityData)
-    Preprocessed_dataset.find_best_features(polarityData)
+    multinomial_accuracy = []
+    bernoulli_accuracy = []
+    for i in range(fold_num):
+        print i
+        Preprocessed_dataset = Preprocess_Data()
+        Preprocessed_dataset.transform_dataset(i, fold_num, polarityData)
+        Preprocessed_dataset.filter_dataset(4000)
 
-    multinomial_naive_bayes_model = Multinomial_NaiveBayesModel(Preprocessed_dataset)
-    multinomial_accuracy = multinomial_naive_bayes_model.test(Preprocessed_dataset.test_input, Preprocessed_dataset.test_output)
-    print "accuracy of multinomial_accuracy: ", multinomial_accuracy
+        test_accuracy = calculate_test_accuracy(Preprocessed_dataset)
+        multinomial_accuracy.append(test_accuracy[0])
+        bernoulli_accuracy.append(test_accuracy[1])
 
-    bernoulli_naive_bayes_model = Bernoulli_NaiveBayesModel(Preprocessed_dataset)
-    bernoulli_accuracy = bernoulli_naive_bayes_model.test(Preprocessed_dataset.test_input, Preprocessed_dataset.test_output)
-    print "accuracy of bernoulli_naive_bayes_model: ", bernoulli_accuracy
+    print "accuracy of multinomial_accuracy: ", np.mean(multinomial_accuracy)
+    print "accuracy of bernoulli_naive_bayes_model: ", np.mean(bernoulli_accuracy)
 
-#cross_validation(0, 10)
 
+
+#cross_validation(10)
 
 
 
@@ -348,13 +426,20 @@ polarityData.preprocess_dataset(dataset)
 dataset = nltk.corpus.product_reviews_1
 polarityData.preprocess_dataset(dataset)
 Preprocessed_dataset = Preprocess_Data()
-Preprocessed_dataset.divide_dataset(0, 10, polarityData)
-Preprocessed_dataset.find_best_features(polarityData)
+Preprocessed_dataset.transform_dataset(0, 10, polarityData)
+Preprocessed_dataset.filter_dataset(2000)
 
-multinomial_naive_bayes_model = Multinomial_NaiveBayesModel(Preprocessed_dataset)
-multinomial_accuracy = multinomial_naive_bayes_model.test(Preprocessed_dataset.test_input, Preprocessed_dataset.test_output)
+multinomial_naive_bayes_model = Multinomial_NaiveBayesModel()
+multinomial_naive_bayes_model.train(Preprocessed_dataset)
+multinomial_accuracy = multinomial_naive_bayes_model.test(Preprocessed_dataset.X_test, Preprocessed_dataset.Y_test)
 print "accuracy of multinomial_accuracy: ", multinomial_accuracy
 
-bernoulli_naive_bayes_model = Bernoulli_NaiveBayesModel(Preprocessed_dataset)
-bernoulli_accuracy = bernoulli_naive_bayes_model.test(Preprocessed_dataset.test_input, Preprocessed_dataset.test_output)
+bernoulli_naive_bayes_model = Bernoulli_NaiveBayesModel()
+bernoulli_naive_bayes_model.train(Preprocessed_dataset)
+bernoulli_accuracy = bernoulli_naive_bayes_model.test(Preprocessed_dataset.X_test, Preprocessed_dataset.Y_test)
 print "accuracy of bernoulli_naive_bayes_model: ", bernoulli_accuracy
+
+"""
+maxent_accuracy = calculate_accuracy_maxent(Preprocessed_dataset)
+print "accuracy of max ent model: ", maxent_accuracy
+"""

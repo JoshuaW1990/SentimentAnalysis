@@ -16,7 +16,7 @@ test = [
     (dict(a=1,c=1)), # unseen
     (dict(a=1)), # unseen
     (dict(b=1,c=1)), # seen 3 times, labels=y,y,x
-    (dict(b=1)), # seen 1 time, label=x
+    (dict(b=1, d=1)), # seen 1 time, label=x
 ]
 
 clf = MaxentClassifier.train(train)
