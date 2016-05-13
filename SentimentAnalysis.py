@@ -563,6 +563,124 @@ class Preprocess_Data_bigram:
                     del sentence[word]
 
 
+
+class Preprocess_Data_bigram_POS:
+    def __init__(self):
+        self.X_train =[]
+        self.Y_train = []
+        self.X_test = []
+        self.Y_test = []
+        self.word_features = set()
+
+    def extract_sentence(self, polarity_sents, vocab):
+        # Get the minimum value of the size
+        pos_size = len(polarity_sents.posSents)
+        neg_size = len(polarity_sents.negSents)
+        min_size = min(pos_size, neg_size)
+        # shuffle the dataset
+        pos_sentence = polarity_sents.posSents
+        #shuffle(pos_sentence)
+        neg_sentence = polarity_sents.negSents
+        #shuffle(neg_sentence)
+
+        pos_sentence = pos_sentence[:min_size]
+        neg_sentence = neg_sentence[:min_size]
+
+        new_pos_sentence = []
+        new_neg_sentence = []
+        for i in range(len(pos_sentence)):
+            sentence1 = pos_sentence[i]
+            tmp_list1 = [1 for j in range(len(sentence1))]
+            tmp_sentence1 = zip(sentence1, tmp_list1)
+            new_pos_sentence.append(tmp_sentence1)
+            sentence2 = neg_sentence[i]
+            tmp_list2 = [1 for j in range(len(sentence2))]
+            tmp_sentence2 = zip(sentence2, tmp_list2)
+            new_neg_sentence.append(tmp_sentence2)
+
+        pos_sentence_prep = PreprocessText(new_pos_sentence, vocab)
+        neg_sentence_prep = PreprocessText(new_neg_sentence, vocab)
+        return (pos_sentence_prep, neg_sentence_prep)
+
+    # Divide the dataset into training set and test set by cross validation method
+    # Divide the dataset into training set and test set by cross validation method
+    def divide_dataset(self, fold_index, fold_num, pos_sentence, neg_sentence):
+        if fold_index >= fold_num:
+            print "error when dividing the dataset in cross validation"
+            return None
+        size = len(pos_sentence)
+        fold_size = int(size / fold_num)
+        if fold_index == fold_size - 1:
+            end_index = size
+        else:
+            end_index = fold_size * (fold_index + 1)
+        start_index = fold_size * fold_index
+        training_input = pos_sentence[:start_index] + pos_sentence[end_index:] + neg_sentence[:start_index] + neg_sentence[end_index:]
+        test_input = pos_sentence[start_index:end_index] + neg_sentence[start_index:end_index]
+        training_output = [1] * (size - (end_index - start_index)) + [-1] * (size - (end_index - start_index))
+        test_output = [1] * (end_index - start_index) + [-1] * (end_index - start_index)
+        return (training_input, training_output, test_input, test_output)
+
+    # Convert the form of the dataset
+    def transform_dataset(self, fold_index, fold_num, polarity_sents, bigram_hmm, vocab):
+        (pos_sentence, neg_sentence) = self.extract_sentence(polarity_sents, vocab)
+        (training_input, training_output, test_input, test_output) = self.divide_dataset(fold_index, fold_num, pos_sentence, neg_sentence)
+        self.Y_train = training_output
+        self.Y_test = test_output
+        verb_words = set(['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ'])
+        adjective_words = set(['JJ', 'JJR', 'JJS'])
+        noun_words = set(['NN', 'NNP', 'NNPS', 'NNS'])
+        pred_training_sents = bigram_hmm.Predict(training_input)
+        pred_test_sents = bigram_hmm.Predict(test_input)
+        for sentence in pred_training_sents:
+            instance = {}
+            for i in range(1, len(sentence)):
+                current_word = sentence[i][0]
+                current_tag = sentence[i][1]
+                self.word_features.add(current_word)
+                instance[current_word] = 1
+                prev_word1 = sentence[i - 1][0]
+                prev_tag1 = sentence[i - 1][1]
+                bigram = (prev_word1, current_word)
+                self.word_features.add(bigram)
+                instance[bigram] = 1
+                if i > 1:
+                    prev_word0 = sentence[i - 2][0]
+                    prev_tag0 = sentence[i - 2][1]
+                    if prev_tag0 in verb_words and prev_tag1 in adjective_words and current_tag in noun_words:
+                        trigram = (prev_word0, prev_word1, current_word)
+                        instance[trigram] = 1
+            self.X_train.append(instance)
+        for sentence in pred_test_sents:
+            instance = {}
+            for i in range(1, len(sentence)):
+                current_word = sentence[i][0]
+                current_tag = sentence[i][1]
+                self.word_features.add(current_word)
+                instance[current_word] = 1
+                prev_word1 = sentence[i - 1][0]
+                prev_tag1 = sentence[i - 1][1]
+                bigram = (prev_word1, current_word)
+                self.word_features.add(bigram)
+                instance[bigram] = 1
+                if i > 1:
+                    prev_word0 = sentence[i - 2][0]
+                    prev_tag0 = sentence[i - 2][1]
+                    if prev_tag0 in verb_words and prev_tag1 in adjective_words and current_tag in noun_words:
+                        trigram = (prev_word0, prev_word1, current_word)
+                        instance[trigram] = 1
+            self.X_test.append(instance)
+
+    # filtering the words in the dataset
+    def filter_dataset(self, num):
+        word_list = filter_words(self, num)
+        self.word_features = set(word_list)
+        for sentence in self.X_train:
+            for word in sentence.keys():
+                if word not in self.word_features:
+                    del sentence[word]
+
+
 """baseline algorithm
 """
 # build the dictionary of the positive words and negative words
@@ -606,12 +724,10 @@ def baseline_algorithm(pos_lexicons, neg_lexicons, test_input):
                 neg_count += 1
             else:
                 continue
-        if pos_count > neg_count:
+        if pos_count >= neg_count:
             pred_labels.append(1)
-        elif pos_count < neg_count:
-            pred_labels.append(-1)
         else:
-            pred_labels.append(0)
+            pred_labels.append(-1)
     return pred_labels
 
 def calculate_confusionMatrix(pred_labels, labels):
@@ -957,9 +1073,10 @@ dataset = nltk.corpus.product_reviews_2
 polarityData.preprocess_dataset(dataset)
 dataset = nltk.corpus.product_reviews_1
 polarityData.preprocess_dataset(dataset)
-Preprocessed_dataset = Preprocess_Data_unigram()
+Preprocessed_dataset = Preprocess_Data_bigram()
 Preprocessed_dataset.transform_dataset(0, 10, polarityData)
-#Preprocessed_dataset.transform_dataset(0, 10, polarityData, bigram_hmm, vocabulary
+#Preprocessed_dataset = Preprocess_Data_bigram_POS()
+#Preprocessed_dataset.transform_dataset(0, 10, polarityData, bigram_hmm, vocabulary)
 #Preprocessed_dataset.filter_dataset(4000)
 
 """baseline accuracy
