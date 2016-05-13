@@ -6,6 +6,256 @@ from random import shuffle
 from collections import defaultdict
 from math import log, exp, sqrt
 
+from nltk.corpus import treebank
+from nltk.tag.util import untag  # Untags a tagged sentence.
+
+
+
+"""POS tagging for the dataset
+"""
+unknown_token = "<UNK>"  # unknown word token.
+start_token = "<S>"  # sentence boundary token.
+end_token = "</S>"  # sentence boundary token.
+
+#Remove trace tokens and tags from the treebank as these are not necessary.
+def TreebankNoTraces():
+    return [[x for x in sent if x[1] != "-NONE-"] for sent in treebank.tagged_sents()]
+
+#the function for preprocess the text
+def PreprocessText(dataset, vocab):
+    new_set = []
+    for sentence in dataset:
+        if len(sentence) == 0:
+            print sentence, dataset.index(sentence)
+        tmpSentence = list(sentence)
+        for i in range(len(tmpSentence)):
+            if tmpSentence[i][0] not in vocab:
+                tmpSentence[i] = (unknown_token, sentence[i][1])
+        tmp_sent = [(start_token, start_token)] + tmpSentence + [(end_token, end_token)]
+        new_set.append(tmp_sent)
+    return new_set
+
+# get the vocabulary
+def PreprocessVocab(dataset):
+    vocab_dict = defaultdict(int)
+    vocabulary = set([])
+    for sentence in dataset:
+        for word in sentence:
+            vocab_dict[word[0]] += 1
+    for word in vocab_dict.iterkeys():
+        if vocab_dict[word] > 1:
+            vocabulary.add(word)
+    return vocabulary
+
+class BigramHMM:
+    def __init__(self):
+        """ Implement:
+        self.transitions, the A matrix of the HMM: a_{ij} = P(t_j | t_i)
+        self.emissions, the B matrix of the HMM: b_{ii} = P(w_i | t_i)
+        self.dictionary, a dictionary that maps a word to the set of possible tags
+        """
+        self.transitions = defaultdict(float)
+        self.emissions = defaultdict(float)
+        self.dictionary = defaultdict(set)
+
+    def Train(self, training_set):
+        """
+        1. Estimate the A matrix a_{ij} = P(t_j | t_i)
+        2. Estimate the B matrix b_{ii} = P(w_i | t_i)
+        3. Compute the tag dictionary
+        """
+        unigram_tag = defaultdict(float)
+        for sentence in training_set:
+            for i in range(len(sentence)):
+                word = sentence[i][0]
+                tag = sentence[i][1]
+                if word not in self.dictionary:
+                    self.dictionary[word] = set()
+                self.dictionary[word].add(tag)
+                unigram_tag[tag] += 1
+                self.emissions[sentence[i]] += 1
+                if i < len(sentence) - 1:
+                    self.transitions[(tag, sentence[i + 1][1])] += 1
+        for bigram in self.transitions.keys():
+            self.transitions[bigram] = self.transitions[bigram] / unigram_tag[bigram[0]]
+        for unigram in self.emissions.keys():
+            self.emissions[unigram] = self.emissions[unigram] / unigram_tag[unigram[1]]
+        return None
+
+
+    def ComputePercentAmbiguous(self, data_set):
+        """ Compute the percentage of tokens in data_set that have more than one tag according to self.dictionary. """
+        tag_dict = defaultdict(set)
+        total_token = 0.0
+        ambiguous_token = 0.0
+        for sentence in data_set:
+            for word in sentence:
+                total_token += 1.0
+                if len(self.dictionary[word[0]]) > 1:
+                    ambiguous_token += 1.0
+        percent_ambiguous = ambiguous_token / total_token
+        print "There are %s tags for unknown_token." %len(self.dictionary[unknown_token])
+        print "The tags for the unknown token are ", list(self.dictionary[unknown_token])
+        return (100 * percent_ambiguous)
+
+    def JointProbability(self, sent):
+        """ Compute the joint probability of the words and tags of a tagged sentence. """
+        probability = 1
+        for i in range(1, len(sent)):
+            current_tag = sent[i][1]
+            prev_tag = sent[i-1][1]
+            probability = probability * self.transitions[(prev_tag, current_tag)] * self.emissions[sent[i]]
+        return probability
+
+    def findMax(self, viterbi_dict, current_state, current_word, state):
+        maxViterbi = 0.0
+        maxPrevState = state[0]
+        for prev_state in state:
+            tmp_viterbi = viterbi_dict[prev_state] * self.transitions[(prev_state, current_state)] * self.emissions[(current_word, current_state)]
+            if maxViterbi < tmp_viterbi:
+                maxViterbi = tmp_viterbi
+                maxPrevState = prev_state
+        return (maxViterbi, maxPrevState)
+
+    def Viterbi(self, sent):
+        """ Find the probability and identity of the most likely tag sequence given the sentence. """
+        # Preprocess to get the list of states
+        tmp_sent = sent[1:-1]
+        state = set()
+        for word in tmp_sent:
+            state.update(self.dictionary[word[0]])
+        state = list(state)
+        viterbi_matrix = []
+        backpointers = []
+        #Initialization step
+        tag_dict = defaultdict(float)
+        back_dict = defaultdict(str)
+        for current_state in state:
+            prev_state = sent[0][1]
+            current_word = sent[1][0]
+            tag_dict[current_state] = self.transitions[(prev_state, current_state)] * self.emissions[(current_word, current_state)]
+            back_dict[current_state] = prev_state
+        viterbi_matrix.append(tag_dict)
+        backpointers.append(back_dict)
+        #Recursion step
+        for t in range(1, len(tmp_sent)):
+            tag_dict = defaultdict(float)
+            back_dict = defaultdict(str)
+            current_word = tmp_sent[t][0]
+            for current_state in state:
+                (tag_dict[current_state], back_dict[current_state]) = self.findMax(viterbi_matrix[-1], current_state, current_word, state)
+            viterbi_matrix.append(tag_dict)
+            backpointers.append(back_dict)
+        #termination step
+        (current_word, current_state) = sent[-1]
+        tag_dict = defaultdict(float)
+        back_dict = defaultdict(str)
+        (tag_dict[current_state], back_dict[current_state]) = self.findMax(viterbi_matrix[-1], current_state, current_word, state)
+        viterbi_matrix.append(tag_dict)
+        backpointers.append(back_dict)
+        #Get the backtrace by the backpointers
+        backpointers.reverse()
+        backtrace = [sent[-1][1]]
+        for search_dict in backpointers:
+            tag = search_dict[backtrace[-1]]
+            backtrace.append(tag)
+        backtrace.reverse()
+        if viterbi_matrix[-1].values()[0] == 0:
+            return "incorrect"
+        else:
+            return backtrace
+
+
+
+    def Predict(self, test_set):
+        """ Use Viterbi and predict the most likely tag sequence for every sentence. Return a re-tagged test_set. """
+        predict_set = []
+        flag = 1
+        for sentence in test_set:
+            backtrace = self.Viterbi(sentence)
+            if backtrace == "incorrect":
+                predict_set.append(sentence)
+                continue
+            predict_sentence = list(sentence)
+            for i in range(len(predict_sentence)):
+                predict_sentence[i] = (predict_sentence[i][0], backtrace[i])
+            predict_set.append(predict_sentence)
+        return predict_set
+
+
+    def ConfusionMatrix(self, test_set, test_set_predicted):
+        #preprocess the data
+        tag_set = set()
+        for tags in self.dictionary.values():
+            tag_set.update(tags)
+        tag_list = list(tag_set)
+        size = len(tag_list)
+        confusion_matrix = [[0.0 for x in range(size)] for y in range(size)]  # In the confusion matrix, the first index is real tag, second is the predict tag
+        total_tagerror = 0.0
+        # Updating the confusion matrix
+        for i in range(len(test_set)):
+            real_sent = test_set[i]
+            predict_sent = test_set_predicted[i]
+            if test_set_predicted[i] == "incorrect":
+                continue
+            for j in range(len(real_sent)):
+                real_tag = real_sent[j][1]
+                predict_tag = predict_sent[j][1]
+                if real_tag != predict_tag:
+                    total_tagerror += 1.0
+                    real_position = tag_list.index(real_tag)
+                    predict_position = tag_list.index(predict_tag)
+                    confusion_matrix[real_position][predict_position] += 1.0
+        for i in range(size):
+            for j in range(size):
+                confusion_matrix[i][j] = 100 * confusion_matrix[i][j] / total_tagerror
+        # Extract the most confused classes
+        error_list = []
+        for num_list in confusion_matrix:
+            for num in num_list:
+                if num > 5:
+                    error_list.append(num)
+        # print the output
+        error_list.sort()
+        error_list.reverse()
+        for num in error_list:
+            print "---------------------------------"
+            print "The error percentage is %.2f%%." %num,
+            for i in range(size):
+                if num in confusion_matrix[i]:
+                    real_tag = tag_list[i]
+                    j = confusion_matrix[i].index(num)
+                    predict_tag = tag_list[j]
+                    break
+            print "The tags are ", real_tag, "->", predict_tag
+        return None
+
+def ComputeAccuracy(test_set, test_set_predicted):
+    """ Using the gold standard tags in test_set, compute the sentence and tagging accuracy of test_set_predicted. """
+    correct_sent = 0
+    correct_tag = 0
+    total_sent = len(test_set)
+    total_tag = 0
+    for i in range(len(test_set)):
+        if test_set_predicted[i] == "incorrect":
+            continue
+        total_tag += len(test_set[i])
+        total_tag -= 2
+        flag = 1
+        for j in range(1, (len(test_set[i]) -1)):
+            if test_set[i][j][1] == test_set_predicted[i][j][1]:
+                correct_tag += 1
+            else:
+                flag = 0
+        if flag == 1:
+            correct_sent += 1
+    sent_accuracy = float(correct_sent) / float(total_sent)
+    tag_accuracy = float(correct_tag) / float(total_tag)
+    print "sentence accuracy is %.2f%%." %(100 * sent_accuracy)
+    print "tag accuracy is %.2f%%." %(100 * tag_accuracy)
+    return None
+
+
 
 
 """
@@ -35,6 +285,8 @@ class PolaritySents:
         for i in range(len(features)):
             feature = features[i]
             sent_sentiment = 0
+            if sents[i] == []:
+                continue
             for item in feature:
                 num = int(item[1])
                 sent_sentiment += num
@@ -119,6 +371,116 @@ class Preprocess_Data_unigram:
             for word in sentence.keys():
                 if word not in self.word_features:
                     del sentence[word]
+
+
+class Preprocess_Data_unigram_POS:
+    def __init__(self):
+        self.X_train =[]
+        self.Y_train = []
+        self.X_test = []
+        self.Y_test = []
+        self.word_features = set()
+
+    def extract_sentence(self, polarity_sents, vocab):
+        # Get the minimum value of the size
+        pos_size = len(polarity_sents.posSents)
+        neg_size = len(polarity_sents.negSents)
+        min_size = min(pos_size, neg_size)
+        # shuffle the dataset
+        pos_sentence = polarity_sents.posSents
+        #shuffle(pos_sentence)
+        neg_sentence = polarity_sents.negSents
+        #shuffle(neg_sentence)
+
+        pos_sentence = pos_sentence[:min_size]
+        neg_sentence = neg_sentence[:min_size]
+
+        new_pos_sentence = []
+        new_neg_sentence = []
+        for i in range(len(pos_sentence)):
+            sentence1 = pos_sentence[i]
+            tmp_list1 = [1 for j in range(len(sentence1))]
+            tmp_sentence1 = zip(sentence1, tmp_list1)
+            new_pos_sentence.append(tmp_sentence1)
+            sentence2 = neg_sentence[i]
+            tmp_list2 = [1 for j in range(len(sentence2))]
+            tmp_sentence2 = zip(sentence2, tmp_list2)
+            new_neg_sentence.append(tmp_sentence2)
+
+        pos_sentence_prep = PreprocessText(new_pos_sentence, vocab)
+        neg_sentence_prep = PreprocessText(new_neg_sentence, vocab)
+        return (pos_sentence_prep, neg_sentence_prep)
+
+    # Divide the dataset into training set and test set by cross validation method
+    # Divide the dataset into training set and test set by cross validation method
+    def divide_dataset(self, fold_index, fold_num, pos_sentence, neg_sentence):
+        if fold_index >= fold_num:
+            print "error when dividing the dataset in cross validation"
+            return None
+        size = len(pos_sentence)
+        fold_size = int(size / fold_num)
+        if fold_index == fold_size - 1:
+            end_index = size
+        else:
+            end_index = fold_size * (fold_index + 1)
+        start_index = fold_size * fold_index
+        training_input = pos_sentence[:start_index] + pos_sentence[end_index:] + neg_sentence[:start_index] + neg_sentence[end_index:]
+        test_input = pos_sentence[start_index:end_index] + neg_sentence[start_index:end_index]
+        training_output = [1] * (size - (end_index - start_index)) + [-1] * (size - (end_index - start_index))
+        test_output = [1] * (end_index - start_index) + [-1] * (end_index - start_index)
+        return (training_input, training_output, test_input, test_output)
+
+    # Convert the form of the dataset
+    def transform_dataset(self, fold_index, fold_num, polarity_sents, bigram_hmm, vocab):
+        (pos_sentence, neg_sentence) = self.extract_sentence(polarity_sents, vocab)
+        (training_input, training_output, test_input, test_output) = self.divide_dataset(fold_index, fold_num, pos_sentence, neg_sentence)
+        self.Y_train = training_output
+        self.Y_test = test_output
+        adjective_words = set(['JJ', 'JJR', 'JJS'])
+        noun_words = set(['NN', 'NNP', 'NNPS', 'NNS'])
+        pred_training_sents = bigram_hmm.Predict(training_input)
+        pred_test_sents = bigram_hmm.Predict(test_input)
+        for sentence in pred_training_sents:
+            instance = {}
+            for i in range(1, len(sentence)):
+                #print pred_tags[i], i
+                #print pred_tags
+                current_word = sentence[i][0]
+                current_tag = sentence[i][1]
+                prev_word = sentence[i - 1][0]
+                prev_tag = sentence[i - 1][1]
+                self.word_features.add(current_word)
+                instance[current_word] = 1
+                if prev_tag in adjective_words and current_tag in noun_words:
+                    bigram = (prev_word, current_word)
+                    instance[bigram] = 1
+            self.X_train.append(instance)
+        for sentence in pred_test_sents:
+            instance = {}
+            for i in range(1, len(sentence)):
+                #print pred_tags[i], i
+                #print pred_tags
+                current_word = sentence[i][0]
+                current_tag = sentence[i][1]
+                prev_word = sentence[i - 1][0]
+                prev_tag = sentence[i - 1][1]
+                self.word_features.add(current_word)
+                instance[current_word] = 1
+                if prev_tag in adjective_words and current_tag in noun_words:
+                    bigram = (prev_word, current_word)
+                    instance[bigram] = 1
+            self.X_test.append(instance)
+
+    # filtering the words in the dataset
+    def filter_dataset(self, num):
+        word_list = filter_words(self, num)
+        self.word_features = set(word_list)
+        for sentence in self.X_train:
+            for word in sentence.keys():
+                if word not in self.word_features:
+                    del sentence[word]
+
+
 
 class Preprocess_Data_bigram:
     def __init__(self):
@@ -554,7 +916,7 @@ def cross_validation(fold_num):
     bernoulli_accuracy = []
     for i in range(fold_num):
         print i
-        Preprocessed_dataset = Preprocess_Data()
+        Preprocessed_dataset = Preprocess_Data_bigram()
         Preprocessed_dataset.transform_dataset(i, fold_num, polarityData)
         Preprocessed_dataset.filter_dataset(4000)
 
@@ -571,7 +933,22 @@ def cross_validation(fold_num):
 
 
 
+treebank_tagged_sents = TreebankNoTraces()  # Remove trace tokens.
+training_set = treebank_tagged_sents[:3000]  # This is the train-test split that we will use.
+test_set = treebank_tagged_sents[3000:]
 
+# Transform the data sets by eliminating unknown words and adding sentence boundary tokens.
+vocabulary = PreprocessVocab(training_set)
+training_set_prep = PreprocessText(training_set, vocabulary)
+test_set_prep = PreprocessText(test_set, vocabulary)
+
+bigram_hmm = BigramHMM()
+bigram_hmm.Train(training_set_prep)
+
+# POS tagging for the test dataset
+test_set_predicted_bigram_hmm = bigram_hmm.Predict(test_set_prep)
+print "--- Bigram HMM accuracy ---"
+ComputeAccuracy(test_set_prep, test_set_predicted_bigram_hmm)
 
 
 
@@ -580,8 +957,9 @@ dataset = nltk.corpus.product_reviews_2
 polarityData.preprocess_dataset(dataset)
 dataset = nltk.corpus.product_reviews_1
 polarityData.preprocess_dataset(dataset)
-Preprocessed_dataset = Preprocess_Data_bigram()
+Preprocessed_dataset = Preprocess_Data_unigram()
 Preprocessed_dataset.transform_dataset(0, 10, polarityData)
+#Preprocessed_dataset.transform_dataset(0, 10, polarityData, bigram_hmm, vocabulary
 #Preprocessed_dataset.filter_dataset(4000)
 
 """baseline accuracy
@@ -604,6 +982,8 @@ Y_pred = bernoulli_naive_bayes_model.classify(Preprocessed_dataset.X_test)
 bernoulli_accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
 print "accuracy of bernoulli_naive_bayes_model: ", bernoulli_accuracy
 
+"""
 Y_pred = classify_maxent(Preprocessed_dataset.X_train, Preprocessed_dataset.Y_train, Preprocessed_dataset.X_test)
 maxent_accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
 print "accuracy of maxent model: ", maxent_accuracy
+"""
