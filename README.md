@@ -117,7 +117,7 @@ However, too many features will affect the efficiency of the algorithm especiall
 
 ### t-test
 
-The result of paired t-test is below(See Table~\ref{tab:models}):
+The result of paired t-test is below:
 
 | Model1 | Model2 | p-Value |
 | ------ | :----: | ------: |
