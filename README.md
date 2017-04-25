@@ -127,6 +127,9 @@ The result of paired t-test is below(See Table~\ref{tab:models}):
 
 ### Overall results
 
+The overall result for different models with or without POS tagging is below:
+
+![totalreview](https://github.com/JoshuaW1990/SentimentAnalysis/blob/master/Images/totalreview.png?raw=true)
 
 
 
