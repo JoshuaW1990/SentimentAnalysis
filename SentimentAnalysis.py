@@ -17,12 +17,17 @@ unknown_token = "<UNK>"  # unknown word token.
 start_token = "<S>"  # sentence boundary token.
 end_token = "</S>"  # sentence boundary token.
 
-#Remove trace tokens and tags from the treebank as these are not necessary.
+# Remove trace tokens and tags from the treebank as these are not necessary.
 def TreebankNoTraces():
     return [[x for x in sent if x[1] != "-NONE-"] for sent in treebank.tagged_sents()]
 
-#the function for preprocess the text
+
 def PreprocessText(dataset, vocab):
+    """
+    the function for preprocessing the text:
+    1. Add the start token and the end token of each sentence in the dataset
+    2. Check whether the word is in the vocabulary. If not, replace it with unknown token.
+    """
     new_set = []
     for sentence in dataset:
         if len(sentence) == 0:
@@ -35,8 +40,11 @@ def PreprocessText(dataset, vocab):
         new_set.append(tmp_sent)
     return new_set
 
-# get the vocabulary
+
 def PreprocessVocab(dataset):
+    """
+    Get the vocabulary from the dataset.
+    """
     vocab_dict = defaultdict(int)
     vocabulary = set([])
     for sentence in dataset:
@@ -47,7 +55,11 @@ def PreprocessVocab(dataset):
             vocabulary.add(word)
     return vocabulary
 
+
 class BigramHMM:
+    """
+    hidden markove model for bigram from the training set for tag determination of each words in the dataset
+    """
     def __init__(self):
         """ Implement:
         self.transitions, the A matrix of the HMM: a_{ij} = P(t_j | t_i)
@@ -84,7 +96,9 @@ class BigramHMM:
 
 
     def ComputePercentAmbiguous(self, data_set):
-        """ Compute the percentage of tokens in data_set that have more than one tag according to self.dictionary. """
+        """ 
+        Compute the percentage of tokens in data_set that have more than one tag according to self.dictionary. 
+        """
         tag_dict = defaultdict(set)
         total_token = 0.0
         ambiguous_token = 0.0
@@ -99,7 +113,9 @@ class BigramHMM:
         return (100 * percent_ambiguous)
 
     def JointProbability(self, sent):
-        """ Compute the joint probability of the words and tags of a tagged sentence. """
+        """ 
+        Compute the joint probability of the words and tags of a tagged sentence. 
+        """
         probability = 1
         for i in range(1, len(sent)):
             current_tag = sent[i][1]
@@ -108,6 +124,9 @@ class BigramHMM:
         return probability
 
     def findMax(self, viterbi_dict, current_state, current_word, state):
+        """
+        Find the maximum viterbi value in viterbi algorithm, and return the corresponding viterbi value and the previous state
+        """
         maxViterbi = 0.0
         maxPrevState = state[0]
         for prev_state in state:
@@ -118,7 +137,9 @@ class BigramHMM:
         return (maxViterbi, maxPrevState)
 
     def Viterbi(self, sent):
-        """ Find the probability and identity of the most likely tag sequence given the sentence. """
+        """ 
+        Utilize the viterbi algorithm to find the probability and identity of the most likely tag sequence given the sentence. 
+        """
         # Preprocess to get the list of states
         tmp_sent = sent[1:-1]
         state = set()
@@ -127,7 +148,7 @@ class BigramHMM:
         state = list(state)
         viterbi_matrix = []
         backpointers = []
-        #Initialization step
+        # Initialization step
         tag_dict = defaultdict(float)
         back_dict = defaultdict(str)
         for current_state in state:
@@ -137,7 +158,7 @@ class BigramHMM:
             back_dict[current_state] = prev_state
         viterbi_matrix.append(tag_dict)
         backpointers.append(back_dict)
-        #Recursion step
+        # Recursion step
         for t in range(1, len(tmp_sent)):
             tag_dict = defaultdict(float)
             back_dict = defaultdict(str)
@@ -146,14 +167,14 @@ class BigramHMM:
                 (tag_dict[current_state], back_dict[current_state]) = self.findMax(viterbi_matrix[-1], current_state, current_word, state)
             viterbi_matrix.append(tag_dict)
             backpointers.append(back_dict)
-        #termination step
+        # termination step
         (current_word, current_state) = sent[-1]
         tag_dict = defaultdict(float)
         back_dict = defaultdict(str)
         (tag_dict[current_state], back_dict[current_state]) = self.findMax(viterbi_matrix[-1], current_state, current_word, state)
         viterbi_matrix.append(tag_dict)
         backpointers.append(back_dict)
-        #Get the backtrace by the backpointers
+        # Get the backtrace by the backpointers
         backpointers.reverse()
         backtrace = [sent[-1][1]]
         for search_dict in backpointers:
@@ -166,9 +187,11 @@ class BigramHMM:
             return backtrace
 
 
-
     def Predict(self, test_set):
-        """ Use Viterbi and predict the most likely tag sequence for every sentence. Return a re-tagged test_set. """
+        """ 
+        Use Viterbi algorithm to build models and predict the most likely tag sequence for every sentence. 
+        Return a re-tagged test_set. 
+        """
         predict_set = []
         flag = 1
         for sentence in test_set:
@@ -184,6 +207,9 @@ class BigramHMM:
 
 
     def ConfusionMatrix(self, test_set, test_set_predicted):
+        """
+        Build the confusion matrix for assessing the performance of the model
+        """
         #preprocess the data
         tag_set = set()
         for tags in self.dictionary.values():
@@ -230,8 +256,11 @@ class BigramHMM:
             print "The tags are ", real_tag, "->", predict_tag
         return None
 
+
 def ComputeAccuracy(test_set, test_set_predicted):
-    """ Using the gold standard tags in test_set, compute the sentence and tagging accuracy of test_set_predicted. """
+    """ 
+    Using the gold standard tags in test_set, compute the sentence and tagging accuracy of test_set_predicted. 
+    """
     correct_sent = 0
     correct_tag = 0
     total_sent = len(test_set)
@@ -256,19 +285,23 @@ def ComputeAccuracy(test_set, test_set_predicted):
     return None
 
 
-
-
 """
 Import Dataset
 Tokenization
 """
 class PolaritySents:
+    """
+    Preprocess the dataset to divide the into two groups: positive and negative according to the labels of each sentences
+    """
     def __init__(self):
         self.posSents = []
         self.negSents = []
 
-    #example: dataset = nltk.corpus.product_reviews_2.raw()
+    # example: dataset = nltk.corpus.product_reviews_2.raw()
     def preprocess_dataset(self, dataset):
+        """
+        Divide the sentences according to each label
+        """
         dataset = nltk.corpus.product_reviews_2
         reviews = dataset.reviews()
         features = []
@@ -306,31 +339,36 @@ label for positive sentence: 1
 label for negative sentence: 0
 """
 class Preprocess_Data_unigram:
+    """
+    Preprocess the dataset with splitting into training set and test set
+    The feature used here is the unigram(single word)
+    """
     def __init__(self):
-        self.X_train =[]
+        self.X_train = []
         self.Y_train = []
         self.X_test = []
         self.Y_test = []
         self.word_features = set()
 
     def extract_sentence(self, polarity_sents):
+        """
+        Extract the sentences from the preprocessed dataset (polarity dataset)
+        """
         # Get the minimum value of the size
         pos_size = len(polarity_sents.posSents)
         neg_size = len(polarity_sents.negSents)
         min_size = min(pos_size, neg_size)
-        # shuffle the dataset
         pos_sentence = polarity_sents.posSents
-        #shuffle(pos_sentence)
         neg_sentence = polarity_sents.negSents
-        #shuffle(neg_sentence)
 
         pos_sentence = pos_sentence[:min_size]
         neg_sentence = neg_sentence[:min_size]
         return (pos_sentence, neg_sentence)
 
-    # Divide the dataset into training set and test set by cross validation method
-    # Divide the dataset into training set and test set by cross validation method
     def divide_dataset(self, fold_index, fold_num, pos_sentence, neg_sentence):
+        """
+        Divide the dataset into training set and test set by cross validation method
+        """
         if fold_index >= fold_num:
             print "error when dividing the dataset in cross validation"
             return None
@@ -347,8 +385,10 @@ class Preprocess_Data_unigram:
         test_output = [1] * (end_index - start_index) + [-1] * (end_index - start_index)
         return (training_input, training_output, test_input, test_output)
 
-    # Convert the form of the dataset
     def transform_dataset(self, fold_index, fold_num, polarity_sents):
+        """
+        Convert the form of the dataset into different list like X_train, etc and add the words from training set into word_feature set
+        """
         (pos_sentence, neg_sentence) = self.extract_sentence(polarity_sents)
         (training_input, training_output, test_input, test_output) = self.divide_dataset(fold_index, fold_num, pos_sentence, neg_sentence)
         self.Y_train = training_output
@@ -363,8 +403,10 @@ class Preprocess_Data_unigram:
             instance = dict.fromkeys(sentence, 1)
             self.X_test.append(instance)
 
-    # filtering the words in the dataset
     def filter_dataset(self, num):
+        """
+        filtering the words in the dataset to remove the words which are not in word_features
+        """
         word_list = filter_words(self, num)
         self.word_features = set(word_list)
         for sentence in self.X_train:
@@ -372,8 +414,11 @@ class Preprocess_Data_unigram:
                 if word not in self.word_features:
                     del sentence[word]
 
-
 class Preprocess_Data_unigram_POS:
+    """
+    Preprocess the dataset with splitting into training set and test set
+    The feature used here is the unigram and the tags for each word
+    """
     def __init__(self):
         self.X_train =[]
         self.Y_train = []
@@ -382,19 +427,20 @@ class Preprocess_Data_unigram_POS:
         self.word_features = set()
 
     def extract_sentence(self, polarity_sents, vocab):
+        """
+        Extract the sentences from the preprocessed dataset (polarity dataset)
+        """
         # Get the minimum value of the size
         pos_size = len(polarity_sents.posSents)
         neg_size = len(polarity_sents.negSents)
         min_size = min(pos_size, neg_size)
-        # shuffle the dataset
         pos_sentence = polarity_sents.posSents
-        #shuffle(pos_sentence)
         neg_sentence = polarity_sents.negSents
-        #shuffle(neg_sentence)
 
         pos_sentence = pos_sentence[:min_size]
         neg_sentence = neg_sentence[:min_size]
 
+        # Add the tags fro each words in the sentences
         new_pos_sentence = []
         new_neg_sentence = []
         for i in range(len(pos_sentence)):
@@ -411,9 +457,10 @@ class Preprocess_Data_unigram_POS:
         neg_sentence_prep = PreprocessText(new_neg_sentence, vocab)
         return (pos_sentence_prep, neg_sentence_prep)
 
-    # Divide the dataset into training set and test set by cross validation method
-    # Divide the dataset into training set and test set by cross validation method
     def divide_dataset(self, fold_index, fold_num, pos_sentence, neg_sentence):
+        """
+        Divide the dataset into training set and test set by cross validation method
+        """
         if fold_index >= fold_num:
             print "error when dividing the dataset in cross validation"
             return None
@@ -430,8 +477,10 @@ class Preprocess_Data_unigram_POS:
         test_output = [1] * (end_index - start_index) + [-1] * (end_index - start_index)
         return (training_input, training_output, test_input, test_output)
 
-    # Convert the form of the dataset
     def transform_dataset(self, fold_index, fold_num, polarity_sents, bigram_hmm, vocab):
+        """
+        Convert the form of the dataset into different list like X_train, etc and add the tags for each one
+        """
         (pos_sentence, neg_sentence) = self.extract_sentence(polarity_sents, vocab)
         (training_input, training_output, test_input, test_output) = self.divide_dataset(fold_index, fold_num, pos_sentence, neg_sentence)
         self.Y_train = training_output
@@ -443,8 +492,6 @@ class Preprocess_Data_unigram_POS:
         for sentence in pred_training_sents:
             instance = {}
             for i in range(1, len(sentence)):
-                #print pred_tags[i], i
-                #print pred_tags
                 current_word = sentence[i][0]
                 current_tag = sentence[i][1]
                 prev_word = sentence[i - 1][0]
@@ -458,8 +505,6 @@ class Preprocess_Data_unigram_POS:
         for sentence in pred_test_sents:
             instance = {}
             for i in range(1, len(sentence)):
-                #print pred_tags[i], i
-                #print pred_tags
                 current_word = sentence[i][0]
                 current_tag = sentence[i][1]
                 prev_word = sentence[i - 1][0]
@@ -471,8 +516,10 @@ class Preprocess_Data_unigram_POS:
                     instance[bigram] = 1
             self.X_test.append(instance)
 
-    # filtering the words in the dataset
     def filter_dataset(self, num):
+        """
+        filtering the words in the dataset
+        """
         word_list = filter_words(self, num)
         self.word_features = set(word_list)
         for sentence in self.X_train:
@@ -481,33 +528,37 @@ class Preprocess_Data_unigram_POS:
                     del sentence[word]
 
 
-
 class Preprocess_Data_bigram:
+    """
+    Preprocess the dataset with splitting into training set and test set
+    The feature used here is the unigram and bigram (two neighboring words)
+    """
     def __init__(self):
-        self.X_train =[]
+        self.X_train = []
         self.Y_train = []
         self.X_test = []
         self.Y_test = []
         self.word_features = set()
 
     def extract_sentence(self, polarity_sents):
+        """
+        Extract the sentences from the preprocessed dataset (polarity dataset)
+        """
         # Get the minimum value of the size
         pos_size = len(polarity_sents.posSents)
         neg_size = len(polarity_sents.negSents)
         min_size = min(pos_size, neg_size)
-        # shuffle the dataset
         pos_sentence = polarity_sents.posSents
-        #shuffle(pos_sentence)
         neg_sentence = polarity_sents.negSents
-        #shuffle(neg_sentence)
 
         pos_sentence = pos_sentence[:min_size]
         neg_sentence = neg_sentence[:min_size]
         return (pos_sentence, neg_sentence)
 
-    # Divide the dataset into training set and test set by cross validation method
-    # Divide the dataset into training set and test set by cross validation method
     def divide_dataset(self, fold_index, fold_num, pos_sentence, neg_sentence):
+        """
+        Divide the dataset into training set and test set by cross validation method
+        """
         if fold_index >= fold_num:
             print "error when dividing the dataset in cross validation"
             return None
@@ -524,8 +575,10 @@ class Preprocess_Data_bigram:
         test_output = [1] * (end_index - start_index) + [-1] * (end_index - start_index)
         return (training_input, training_output, test_input, test_output)
 
-    # Convert the form of the dataset
     def transform_dataset(self, fold_index, fold_num, polarity_sents):
+        """
+        Convert the form of the dataset into different list like X_train, etc and add the bigrams for each sentence
+        """
         (pos_sentence, neg_sentence) = self.extract_sentence(polarity_sents)
         (training_input, training_output, test_input, test_output) = self.divide_dataset(fold_index, fold_num, pos_sentence, neg_sentence)
         self.Y_train = training_output
@@ -553,8 +606,10 @@ class Preprocess_Data_bigram:
                 instance[bigram] = 1
             self.X_test.append(instance)
 
-    # filtering the words in the dataset
     def filter_dataset(self, num):
+        """
+        filtering the words in the dataset
+        """
         word_list = filter_words(self, num)
         self.word_features = set(word_list)
         for sentence in self.X_train:
@@ -563,25 +618,28 @@ class Preprocess_Data_bigram:
                     del sentence[word]
 
 
-
 class Preprocess_Data_bigram_POS:
+    """
+    Preprocess the dataset with splitting into training set and test set
+    The feature used here is the unigram, bigram (two neighboring words), and tags for each word
+    """
     def __init__(self):
-        self.X_train =[]
+        self.X_train = []
         self.Y_train = []
         self.X_test = []
         self.Y_test = []
         self.word_features = set()
 
     def extract_sentence(self, polarity_sents, vocab):
+        """
+        Extract the sentences from the preprocessed dataset (polarity dataset)
+        """
         # Get the minimum value of the size
         pos_size = len(polarity_sents.posSents)
         neg_size = len(polarity_sents.negSents)
         min_size = min(pos_size, neg_size)
-        # shuffle the dataset
         pos_sentence = polarity_sents.posSents
-        #shuffle(pos_sentence)
         neg_sentence = polarity_sents.negSents
-        #shuffle(neg_sentence)
 
         pos_sentence = pos_sentence[:min_size]
         neg_sentence = neg_sentence[:min_size]
@@ -602,9 +660,10 @@ class Preprocess_Data_bigram_POS:
         neg_sentence_prep = PreprocessText(new_neg_sentence, vocab)
         return (pos_sentence_prep, neg_sentence_prep)
 
-    # Divide the dataset into training set and test set by cross validation method
-    # Divide the dataset into training set and test set by cross validation method
     def divide_dataset(self, fold_index, fold_num, pos_sentence, neg_sentence):
+        """
+        Divide the dataset into training set and test set by cross validation method
+        """
         if fold_index >= fold_num:
             print "error when dividing the dataset in cross validation"
             return None
@@ -621,8 +680,10 @@ class Preprocess_Data_bigram_POS:
         test_output = [1] * (end_index - start_index) + [-1] * (end_index - start_index)
         return (training_input, training_output, test_input, test_output)
 
-    # Convert the form of the dataset
     def transform_dataset(self, fold_index, fold_num, polarity_sents, bigram_hmm, vocab):
+        """
+        Convert the form of the dataset and add the unigrams, bigrams from the training set into word_feature
+        """
         (pos_sentence, neg_sentence) = self.extract_sentence(polarity_sents, vocab)
         (training_input, training_output, test_input, test_output) = self.divide_dataset(fold_index, fold_num, pos_sentence, neg_sentence)
         self.Y_train = training_output
@@ -671,8 +732,10 @@ class Preprocess_Data_bigram_POS:
                         instance[trigram] = 1
             self.X_test.append(instance)
 
-    # filtering the words in the dataset
     def filter_dataset(self, num):
+        """
+        filtering the words in the dataset
+        """
         word_list = filter_words(self, num)
         self.word_features = set(word_list)
         for sentence in self.X_train:
@@ -681,7 +744,9 @@ class Preprocess_Data_bigram_POS:
                     del sentence[word]
 
 
-"""baseline algorithm
+"""
+baseline algorithm:
+Use the words in opinion-lexicon-English to determine whether the sentence is positive or negative
 """
 # build the dictionary of the positive words and negative words
 path = "opinion-lexicon-English/"
@@ -710,8 +775,10 @@ for line in lines:
     word = line.strip()
     neg_lexicons.add(word)
 
-# use the lexical ratio to determine whether it is negative or postive
 def baseline_algorithm(pos_lexicons, neg_lexicons, test_input):
+    """
+    use the lexical ratio to determine whether it is negative or postive
+    """
     pred_labels = []
     for i in range(len(test_input)):
         sentence = test_input[i].keys()
@@ -731,6 +798,9 @@ def baseline_algorithm(pos_lexicons, neg_lexicons, test_input):
     return pred_labels
 
 def calculate_confusionMatrix(pred_labels, labels):
+    """
+    Build the confusion matrix according to the prediction result of the baseline algorithm
+    """
     confusionMatrix = defaultdict(float)
     for i in range(len(labels)):
         if labels[i] == 1:
@@ -750,6 +820,9 @@ def calculate_confusionMatrix(pred_labels, labels):
     return confusionMatrix
 
 def evaluation(confusionMatrix):
+    """
+    Evaluate the algorithm performance from the confusion matrix
+    """
     total = sum(confusionMatrix.values())
     TP = confusionMatrix['TP']
     TN = confusionMatrix['TN']
@@ -762,19 +835,14 @@ def evaluation(confusionMatrix):
     return (accuracy, cc)
 
 
-
-
-
-
-
-
-
 """
-Training the dataset
+Training the dataset with naive bayes model
 """
-# Multinomial naive bayes model
 class Multinomial_NaiveBayesModel:
-
+    """
+    Multinomial naive bayes model:
+    Use the words in dataset to calcualte the prior probability
+    """
     def __init__(self):
         self.prior = defaultdict(float) #prior probaility p(c) = count(c) / total_count
         self.cond_prob = defaultdict(float) # conditional probability: p(word|c) = (count(c, word) + 1) / (count(c) + |v|)
@@ -809,9 +877,12 @@ class Multinomial_NaiveBayesModel:
         return
 
     def check_disribution(self):
-        # Check the total
+        """
+        Check the distribution of the probability before prediction to avoid using wrong models
+        """
+        # Check the total probability
         assert(self.total_word_count == (self.label_word_count[1] + self.label_word_count[-1])), "distribution of total is incorrect"
-        # Check each label
+        # Check the probability of each label
         label_set = set(self.label_word_count.keys())
         for label in label_set:
             num = 0.0
@@ -841,9 +912,11 @@ class Multinomial_NaiveBayesModel:
         return pred_output
 
 
-
-# Bernoulli Naive bayes model
 class Bernoulli_NaiveBayesModel:
+    """
+    Bernoulli naive bayes model:
+    Use the words in each sentence to calcualte the prior probability
+    """
     vocabulary = set()  # set of words in the training set
     total_sent_count = 0.0  # count(sents)
     label_sent_count = defaultdict(float) # count(label) of sentences: count(label)
@@ -888,6 +961,9 @@ class Bernoulli_NaiveBayesModel:
         return
 
     def check_disribution(self):
+        """
+        Check the distribution of the model after training
+        """
         # Check the label
         assert(self.total_sent_count == (self.label_sent_count[1] + self.label_sent_count[-1])), "distribution of labels are incorrect"
 
@@ -913,12 +989,8 @@ class Bernoulli_NaiveBayesModel:
         return pred_output
 
 
-
-
-
-
-
-"""Use the informtion gain to filter features
+"""
+Use the informtion gain to filter features
 """
 # Calculate entropy
 def CalculateEntropy(output_set):
@@ -969,20 +1041,8 @@ def filter_words(dataset, num):
         info_gain_list.append(info_gain)
     result_list = [feature for (info_gain, feature) in sorted(zip(info_gain_list, feature_list))]
     result_list.reverse()
-    #reversed(result_list)
     print result_list[:10]
     return result_list[:num]
-
-
-
-
-
-
-
-
-
-
-
 
 
 """Use the max_ent model
@@ -998,18 +1058,16 @@ def classify_maxent(X_train, Y_train, X_test):
     return pred_labels
 
 
-
-
-
-
+"""
+Other helper functions
+"""
 # Main function for all the algorithm: run cross validation
 def calculate_accuracy(pred_labels, labels):
     confusionMatrix = calculate_confusionMatrix(pred_labels, labels)
     (accuracy, cc) = evaluation(confusionMatrix)
     return accuracy
 
-
-
+# calculate the accuracy for the specific dataset for naive bayes model
 def calculate_test_accuracy(dataset):
     multinomial_naive_bayes_model = Multinomial_NaiveBayesModel()
     multinomial_naive_bayes_model.train(dataset)
@@ -1021,7 +1079,7 @@ def calculate_test_accuracy(dataset):
 
     return (multinomial_accuracy, bernoulli_accuracy)
 
-
+# do cross validation for a specific fold number
 def cross_validation(fold_num):
     polarityData = PolaritySents()
     dataset = nltk.corpus.product_reviews_2
@@ -1044,63 +1102,65 @@ def cross_validation(fold_num):
     print "accuracy of bernoulli_naive_bayes_model: ", np.mean(bernoulli_accuracy)
 
 
+if __name__ == "__main__":
 
-#cross_validation(10)
+    ############################################################################################
+    # build a HMM model with Viterbi algorithm for POS tagging
+    # Preprocessing
+    treebank_tagged_sents = TreebankNoTraces()  # Remove trace tokens.
+    training_set = treebank_tagged_sents[:3000]  # This is the train-test split that we will use.
+    test_set = treebank_tagged_sents[3000:]
 
+    # Transform the data sets by eliminating unknown words and adding sentence boundary tokens.
+    vocabulary = PreprocessVocab(training_set)
+    training_set_prep = PreprocessText(training_set, vocabulary)
+    test_set_prep = PreprocessText(test_set, vocabulary)
 
+    # Build the bigram hidden markov model for POS tagging
+    bigram_hmm = BigramHMM()
+    bigram_hmm.Train(training_set_prep)
 
-treebank_tagged_sents = TreebankNoTraces()  # Remove trace tokens.
-training_set = treebank_tagged_sents[:3000]  # This is the train-test split that we will use.
-test_set = treebank_tagged_sents[3000:]
+    # POS tagging for the test dataset
+    test_set_predicted_bigram_hmm = bigram_hmm.Predict(test_set_prep)
+    print "--- Bigram HMM accuracy ---"
+    ComputeAccuracy(test_set_prep, test_set_predicted_bigram_hmm)
 
-# Transform the data sets by eliminating unknown words and adding sentence boundary tokens.
-vocabulary = PreprocessVocab(training_set)
-training_set_prep = PreprocessText(training_set, vocabulary)
-test_set_prep = PreprocessText(test_set, vocabulary)
+    ############################################################################################
+    # Predict the polarity of the sentences in dataset
+    # Build the bigram model from the dataset of nltk module
+    polarityData = PolaritySents()
+    dataset = nltk.corpus.product_reviews_2
+    polarityData.preprocess_dataset(dataset)
+    dataset = nltk.corpus.product_reviews_1
+    polarityData.preprocess_dataset(dataset)
+    Preprocessed_dataset = Preprocess_Data_bigram()
+    Preprocessed_dataset.transform_dataset(0, 10, polarityData)
+    #Preprocessed_dataset = Preprocess_Data_bigram_POS()
+    #Preprocessed_dataset.transform_dataset(0, 10, polarityData, bigram_hmm, vocabulary)
+    #Preprocessed_dataset.filter_dataset(4000)
 
-bigram_hmm = BigramHMM()
-bigram_hmm.Train(training_set_prep)
+    ############################################################################################
+    # Prediction result
+    # baseline algorithm
+    Y_pred = baseline_algorithm(pos_lexicons, neg_lexicons, Preprocessed_dataset.X_test)
+    accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
+    print "accuracy of baseline algorithm is: ", accuracy
 
-# POS tagging for the test dataset
-test_set_predicted_bigram_hmm = bigram_hmm.Predict(test_set_prep)
-print "--- Bigram HMM accuracy ---"
-ComputeAccuracy(test_set_prep, test_set_predicted_bigram_hmm)
+    # Multinomial Naive Bayes model
+    multinomial_naive_bayes_model = Multinomial_NaiveBayesModel()
+    multinomial_naive_bayes_model.train(Preprocessed_dataset)
+    Y_pred = multinomial_naive_bayes_model.classify(Preprocessed_dataset.X_test)
+    multinomial_accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
+    print "accuracy of multinomial_accuracy: ", multinomial_accuracy
 
+    # Bernoulli naive bayes model
+    bernoulli_naive_bayes_model = Bernoulli_NaiveBayesModel()
+    bernoulli_naive_bayes_model.train(Preprocessed_dataset)
+    Y_pred = bernoulli_naive_bayes_model.classify(Preprocessed_dataset.X_test)
+    bernoulli_accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
+    print "accuracy of bernoulli_naive_bayes_model: ", bernoulli_accuracy
 
-
-polarityData = PolaritySents()
-dataset = nltk.corpus.product_reviews_2
-polarityData.preprocess_dataset(dataset)
-dataset = nltk.corpus.product_reviews_1
-polarityData.preprocess_dataset(dataset)
-Preprocessed_dataset = Preprocess_Data_bigram()
-Preprocessed_dataset.transform_dataset(0, 10, polarityData)
-#Preprocessed_dataset = Preprocess_Data_bigram_POS()
-#Preprocessed_dataset.transform_dataset(0, 10, polarityData, bigram_hmm, vocabulary)
-#Preprocessed_dataset.filter_dataset(4000)
-
-"""baseline accuracy
-"""
-Y_pred = baseline_algorithm(pos_lexicons, neg_lexicons, Preprocessed_dataset.X_test)
-accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
-print "accuracy of baseline algorithm is: ", accuracy
-
-
-
-multinomial_naive_bayes_model = Multinomial_NaiveBayesModel()
-multinomial_naive_bayes_model.train(Preprocessed_dataset)
-Y_pred = multinomial_naive_bayes_model.classify(Preprocessed_dataset.X_test)
-multinomial_accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
-print "accuracy of multinomial_accuracy: ", multinomial_accuracy
-
-bernoulli_naive_bayes_model = Bernoulli_NaiveBayesModel()
-bernoulli_naive_bayes_model.train(Preprocessed_dataset)
-Y_pred = bernoulli_naive_bayes_model.classify(Preprocessed_dataset.X_test)
-bernoulli_accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
-print "accuracy of bernoulli_naive_bayes_model: ", bernoulli_accuracy
-
-"""
-Y_pred = classify_maxent(Preprocessed_dataset.X_train, Preprocessed_dataset.Y_train, Preprocessed_dataset.X_test)
-maxent_accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
-print "accuracy of maxent model: ", maxent_accuracy
-"""
+    # MaxEnt model
+    Y_pred = classify_maxent(Preprocessed_dataset.X_train, Preprocessed_dataset.Y_train, Preprocessed_dataset.X_test)
+    maxent_accuracy = calculate_accuracy(Y_pred, Preprocessed_dataset.Y_test)
+    print "accuracy of maxent model: ", maxent_accuracy
